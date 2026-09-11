@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Cline Feishu pr-review instance %i periodically
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=20min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

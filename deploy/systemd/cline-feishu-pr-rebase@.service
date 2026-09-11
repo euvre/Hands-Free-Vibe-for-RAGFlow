@@ -1,0 +1,8 @@
+[Unit]
+Description=Cline Feishu PR rebase line (conflict rebase) — instance %i, one-shot
+
+[Service]
+Type=oneshot
+TimeoutStartSec=0
+Environment=HFV_INST=%i
+ExecStart=%h/hands-free-vibe/lines/pr-rebase-line.sh

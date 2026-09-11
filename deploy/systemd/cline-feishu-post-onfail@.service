@@ -1,0 +1,13 @@
+[Unit]
+Description=Cline Feishu post-group backstop after a killed instance-%i run
+# Wired as OnFailure= on cline-feishu-triage@%i.service: when the task
+# container dies from a signal (SIGKILL/SIGTERM — ExecStartPost is skipped on
+# ANY failed ExecStart), this unit runs the post group so tasks.py close
+# settles the task row, staged replies are sent, the instance's in-flight
+# issue marker is released and issue-sync runs. HFV_SLOT must match the dead
+# run's instance.
+
+[Service]
+Type=oneshot
+Environment=HFV_SLOT=%i
+ExecStart=%h/hands-free-vibe/lines/post-task.sh

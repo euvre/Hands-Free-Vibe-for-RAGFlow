@@ -1,0 +1,21 @@
+[Unit]
+Description=Cline Feishu issue triage task (one-shot task container, instance %i)
+# When the run is killed by a signal, ExecStartPost is skipped — this
+# backstop runs the post group instead (task close, staged replies,
+# in-flight marker release).
+OnFailure=cline-feishu-post-onfail@%i.service
+
+[Service]
+Type=oneshot
+# No systemd start timeout: ExecStart legitimately runs for hours (LLM chain
+# guarded by its own internal timeout). The distro default (90s) would kill
+# healthy runs.
+TimeoutStartSec=0
+# Instance identity: framework scripts derive per-instance paths from this
+# variable (pre-task.sh runs the Feishu scan on instance 1 only).
+Environment=HFV_SLOT=%i
+# pre 组：任务启动前执行（详见 pre-task.sh）。'-' 前缀：失败不阻塞主任务。
+ExecStartPre=-%h/hands-free-vibe/lines/pre-task.sh
+ExecStart=%h/hands-free-vibe/lines/run-container.sh run-task.sh
+# post 组：任务结束后执行（详见 post-task.sh）。'-' 前缀：失败不影响任务状态。
+ExecStartPost=-%h/hands-free-vibe/lines/post-task.sh

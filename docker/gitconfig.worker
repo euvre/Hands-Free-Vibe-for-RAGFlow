@@ -1,0 +1,10 @@
+# gitconfig.worker — the ONLY git identity a slot worker container sees.
+# run-slot.sh mounts this read-only over /home/inf/.gitconfig, so the shared
+# host ~/.gitconfig (with its gh credential helper) is never exposed inside
+# workers. Push/PR delivery stays host-side in post-deliver.sh, which runs
+# issue-deliver.sh from the SLOT workdir using the host's credentials.
+[user]
+	email = yixiao121314@outlook.com
+	name = noob
+[protocol "file"]
+	allow = always

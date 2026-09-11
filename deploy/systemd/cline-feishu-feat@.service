@@ -1,0 +1,9 @@
+[Unit]
+Description=Cline Feishu feature-implementation task (one-shot, manual, instance %i)
+
+[Service]
+Type=oneshot
+TimeoutStartSec=0
+Environment=HFV_FEAT_INST=%i
+ExecStart=%h/hands-free-vibe/lines/run-container.sh run-feat.sh
+ExecStartPost=-%h/hands-free-vibe/lines/feat-deliver.sh

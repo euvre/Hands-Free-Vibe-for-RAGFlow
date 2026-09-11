@@ -1,0 +1,8 @@
+[Unit]
+Description=Cline Feishu PR audit line (we review others' PRs) — instance %i, one-shot
+
+[Service]
+Type=oneshot
+TimeoutStartSec=0
+Environment=HFV_INST=%i
+ExecStart=%h/hands-free-vibe/lines/pr-audit-line.sh

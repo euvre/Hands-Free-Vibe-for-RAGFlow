@@ -1,0 +1,68 @@
+# hfv-task — all-in-one task container image (2026-09-11).
+#
+# Replaces the slot architecture (per-slot sibling compose stack + worker):
+# the whole service stack (mysql / redis / elasticsearch / minio / nats) runs
+# INSIDE this container, and every state directory lives on the container
+# layer — so `docker commit` after a run preserves EVERYTHING (accounts,
+# default model, datasets, ES indices, chrome session) into the image. Slots
+# are gone: a task runs in a throwaway container off the golden image, then
+# the container is committed back to roll the golden forward.
+#
+# Deliberate choices:
+#   * elasticsearch xpack security OFF (the container publishes nothing;
+#     auth adds bootstrap pain with zero benefit here — retrieval behavior is
+#     identical, DOC_ENGINE stays elasticsearch for issue-fidelity).
+#   * ES heap pinned small (1g): the dev stack's 8GB mem_limit assumed a
+#     dedicated container; in the all-in-one the RAM is shared with the LLM.
+#   * tei (embeddings) and ClickHouse stay on the HOST, socat-forwarded —
+#     stateless shared services, same as the slot workers.
+#   * code/caches stay bind-mounted from the host (delivery needs host-side
+#     credentials; caches would bloat every commit layer).
+FROM hfv-worker:latest
+
+USER root
+ENV DEBIAN_FRONTEND=noninteractive
+
+# mysql 8 + redis + supervisor via apt (mysql-server ships 8.0.x on noble,
+# matching the compose stack's 8.0.40; debian's postinst initializes
+# /var/lib/mysql on the image layer — the first container boot reuses it).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      mysql-server redis-server supervisor \
+      libblas3 liblapack3 libgfortran5 libopenblas0-pthread \
+    && rm -rf /var/lib/apt/lists/* \
+    && mysqld --version && redis-server --version
+
+# elasticsearch, pinned to the stack version (svc-compose.yml STACK_VERSION).
+# The 8.x apt repo no longer carries 8.11.3 — use the official tarball and
+# create the service user ourselves.
+RUN curl -fsSL https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-8.11.3-linux-x86_64.tar.gz \
+      | tar -xz -C /usr/share \
+    && mv /usr/share/elasticsearch-8.11.3 /usr/share/elasticsearch \
+    && useradd -r -d /usr/share/elasticsearch -s /usr/sbin/nologin elasticsearch \
+    && mkdir -p /var/lib/elasticsearch /var/log/elasticsearch \
+    && mkdir -p /usr/share/elasticsearch/logs \
+    && /usr/share/elasticsearch/bin/elasticsearch --version
+
+# minio + nats-server as single binaries (versions mirror svc-compose.yml)
+RUN curl -fsSL https://dl.min.io/server/minio/release/linux-amd64/minio \
+      -o /usr/local/bin/minio && chmod +x /usr/local/bin/minio && minio --version
+RUN curl -fsSL https://github.com/nats-io/nats-server/releases/download/v2.14.2/nats-server-v2.14.2-linux-amd64.tar.gz \
+      | tar -xz --strip-components=1 -C /usr/local/bin --wildcards '*/nats-server' \
+    && nats-server --version
+
+# service data dirs on the container layer (commit-preserved). supervisord
+# runs as root so programs can drop into their service accounts (mysql,
+# elasticsearch, redis); the RUNNER is dropped to inf by the entrypoint after
+# the stack reports ready.
+RUN mkdir -p /data/minio /data/nats /var/log/hfv-task \
+    && chown -R mysql:mysql /var/lib/mysql \
+    && chown -R elasticsearch:elasticsearch /var/lib/elasticsearch /var/log/elasticsearch /usr/share/elasticsearch/config /usr/share/elasticsearch/logs \
+    && chown -R redis:redis /var/lib/redis \
+    && chmod -R a+rX /usr/share/elasticsearch
+
+COPY --chown=root:root task-services.conf /etc/supervisor/conf.d/task-services.conf
+COPY --chown=root:root task-entrypoint.sh /usr/local/bin/task-entrypoint.sh
+RUN chmod +x /usr/local/bin/task-entrypoint.sh
+
+WORKDIR /workspace
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/task-entrypoint.sh"]

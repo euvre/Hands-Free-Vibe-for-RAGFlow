@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Cline Feishu issue triage instance %i every 20 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=20min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

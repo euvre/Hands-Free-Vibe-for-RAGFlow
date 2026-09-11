@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "/home/inf/.npm-global/bin/chrome-devtools-mcp",
+      "args": [
+        "-e", "/usr/bin/google-chrome",
+        "--headless",
+        "--no-sandbox",
+        "--userDataDir", "/home/inf/.cache/chrome-devtools-mcp/profile",
+        "--logFile", "/home/inf/.cache/chrome-devtools-mcp/mcp-server.log"
+      ],
+      "env": {},
+      "disabled": false
+    }
+  }
+}

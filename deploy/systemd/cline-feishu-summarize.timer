@@ -1,0 +1,13 @@
+[Unit]
+Description=Backstop for the Cline Feishu post-run summarizer
+# Primary trigger is ExecStartPost on the task services (fires at every task
+# end). This timer is only a sparse backstop for runs killed via systemctl
+# stop, which never reach ExecStartPost.
+
+[Timer]
+OnBootSec=30min
+OnUnitActiveSec=12h
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

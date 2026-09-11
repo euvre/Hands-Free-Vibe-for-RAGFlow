@@ -1,0 +1,6 @@
+[Unit]
+Description=Cline Feishu post-run summarizer (one-shot)
+
+[Service]
+Type=oneshot
+ExecStart=%h/hands-free-vibe/lines/summarize-run.sh

@@ -1,0 +1,12 @@
+# issue 列表后台任务配置（bash KEY=VALUE）——复制为 config 并填入真实值
+# 滑动窗口天数（默认 7 天）：记录范围与清理阈值都以此为准
+WINDOW_DAYS=7
+# 目标群名称与缓存的 chat_id（首次运行按名称解析后自动回写）
+CHAT_NAME="<群名称>"
+CHAT_ID=<首次运行留空，按名称解析后自动回写>
+# 飞书应用凭据
+APP_ID=<cli_xxx>
+APP_SECRET=<app_secret>
+# glm 档案下截图视觉转写用的 kimi（issue-vision.py 专用）
+KIMI_API_KEY=<sk-...>
+KIMI_BASE_URL=<https://...>

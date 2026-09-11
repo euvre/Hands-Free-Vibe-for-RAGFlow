@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Cline Feishu pr-ci instance %i periodically
+
+[Timer]
+OnBootSec=6min
+OnUnitActiveSec=30min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

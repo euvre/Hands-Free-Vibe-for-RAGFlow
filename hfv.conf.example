@@ -1,0 +1,59 @@
+# hfv.conf.example — hands-free-vibe 站点配置模板（复制为 hfv.conf 并填入真实值；hfv.conf 被 gitignore）
+# 所有脚本共用：bash 经 config.sh、python 经 hfv_config.py 加载；config.sh /
+# hfv_config.py 里的默认值为空——不填 hfv.conf 的话，依赖这些键的功能会拒绝运行。
+
+# ---- 仓库路径 ----
+RAGFLOW_MAIN=                      # 主线工作仓的绝对路径（issue 线修复/交付；PR 线 worktree 池也在其下）
+RAGFLOW_CI_CLONE=                  # pr-ci 线专用 clone（可空，空则该线自动休息）
+
+# ---- 工具 ----
+CLINE_BIN=$HOME/.npm-global/bin/cline
+
+# ---- GitHub 身份 ----
+GITHUB_REPO=owner/repo             # 目标上游仓库
+FORK_REMOTE=                       # 我方 fork 的 git remote 名
+OWN_LOGIN=                         # 我方 GitHub 账号（过滤自己的评论）
+
+# ---- 角色 ----
+MERGE_OWNER_LOGIN=                 # 合并负责人：默认 reviewer、停滞催办与"可以合并"报告的接收人
+SELF_FEISHU_USER_ID=               # 自己的飞书 user_id（ou_...；claim/开始通知里 @自己，空则发纯文本）
+
+# ---- PR 交付 ----
+PR_BASE=main
+PR_LABEL=ci
+PR_REVIEWER=                       # 默认 = MERGE_OWNER_LOGIN
+
+# ---- 主任务运行 ----
+MAIN_MAX_SECONDS=7200              # 单次尝试硬上限（2h）
+
+# ---- LLM 失败重试（quota / transient 共用）----
+QUOTA_RETRY_SECONDS=1800
+QUOTA_MAX_WAIT_SECONDS=21600
+TRANSIENT_RETRY_SECONDS=120
+TRANSIENT_MAX_WAIT_SECONDS=1800
+OTHER_RETRY_SECONDS=240
+OTHER_MAX_WAIT_SECONDS=720
+
+# ---- PR 跟进节奏 ----
+STALLED_AGE_HOURS=12               # 停滞判定与催办冷却（小时）
+REBASE_FIX_COOLDOWN_HOURS=4        # 冲突重基线冷却（小时）
+WORK_START=09:30                   # 催办工作时段（UTC+8）
+WORK_END=20:00
+
+# ---- pr-ci 线 ----
+CI_FIX_COOLDOWN_MINUTES=90         # 同一 PR 两次修复的最小间隔
+CI_FIX_MAX_ATTEMPTS=2              # 同一 head sha 最多修几次
+CI_FIX_MAX_PER_DAY=3               # 同一 PR 每自然日最多修几次
+
+# ---- 交付时的额外 reviewer（blame 推荐）----
+BLAME_MAX_REVIEWERS=1              # 额外 reviewer 上限（合并负责人固定另算）
+BLAME_REVIEWER_EXCLUDE=            # 永不自动请求为 reviewer 的 login（逗号分隔）
+
+# ---- 总结系统 ----
+LESSONS_PER_TASK=4
+TREE_FINAL_COUNT=16
+SUMMARIZE_SECONDS=900
+GOLDEN_HIT_RATE=0.6
+GOLDEN_MIN_OPPS=4
+FUSE_SIM=0.6
+FUSE_COOCC=3

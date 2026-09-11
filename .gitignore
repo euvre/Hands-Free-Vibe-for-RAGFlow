@@ -1,0 +1,42 @@
+# ---- secrets (NEVER commit) ----
+issues/config
+.feishu-uat-state.json
+model-keys.json
+team-map.json
+
+# ---- runtime state ----
+logs/
+tmp/
+tasks/
+deliver/
+deliver-s*/
+audit/
+issues/pr-audit.json
+issues/pr-ci.json
+issues/.gh-email-cache.json
+scratch/
+feat/
+issues/issues.jsonl*
+issues/current*.json
+issues/attachments/
+issues/.store.lock
+issues/__pycache__/
+*.lock
+*.flag
+.current-*
+.scale-*
+.last-session-*
+.model-profile
+pr-batch-list.txt
+
+# ---- junk ----
+mcp/*.tar.gz
+issues/.cursor
+__pycache__/
+*.pyc
+*.bak-*
+*.new
+*.patched
+hfv.conf
+summarize/
+playbook-golden.md

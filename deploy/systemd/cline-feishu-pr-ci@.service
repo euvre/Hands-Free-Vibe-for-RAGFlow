@@ -1,0 +1,8 @@
+[Unit]
+Description=Cline Feishu PR ci line (CI-failure fix) — instance %i, one-shot
+
+[Service]
+Type=oneshot
+TimeoutStartSec=0
+Environment=HFV_INST=%i
+ExecStart=%h/hands-free-vibe/lines/pr-ci-line.sh

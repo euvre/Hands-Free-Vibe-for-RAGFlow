@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Cline Feishu pr-audit instance %i periodically
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=20min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
