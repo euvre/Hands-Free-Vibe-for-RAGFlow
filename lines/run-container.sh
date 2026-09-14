@@ -80,7 +80,13 @@ log "$CTR exited rc=$rc"
 exec 9>"$COMMIT_LOCK"
 flock 9
 SNAP="hfv-task:snap-$TS"
-docker commit "$CTR" "$SNAP" >>"$LOG_DIR/daemon.log" 2>&1 || true
+# pin the image config on every roll-forward: docker commit inherits the
+# container's config, so an overridden --entrypoint at `docker run` time would
+# otherwise poison the golden image.
+docker commit \
+  --change 'ENTRYPOINT ["/usr/bin/tini","--","/usr/local/bin/task-entrypoint.sh"]' \
+  --change 'CMD ["/home/inf/hands-free-vibe/lines/run-task.sh"]' \
+  "$CTR" "$SNAP" >>"$LOG_DIR/daemon.log" 2>&1 || true
 if [[ $rc -eq 0 ]]; then
   # clean exit: roll the golden forward
   docker tag "$SNAP" "$GOLDEN" >>"$LOG_DIR/daemon.log" 2>&1 \
