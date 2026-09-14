@@ -209,14 +209,35 @@ while IFS=$'\t' read -r num branch url mid fails scope; do
   log "ci-fix target pr=$num branch=$branch fails=$fails"
   CUR_PR="$num"; echo "$num" > "$CUR_FILE"
   if [[ "$scope" == external ]]; then
-    # External PR (not ours): no branch write and no label rerun rights —
-    # classify and, for non-restartable failures, leave a polite PR comment
-    # for the author (once per head sha). Restartable classes are skipped
+    # External PR (not ours): we cannot push a fix (no push rights), but the
+    # ci-label retrip works on any PR via our triage permission — so the
+    # arbitration mirrors the own path: env/flaky get a rerun first, and only
+    # a substantive failure earns the author a comment (once per head sha).
     # quietly: only the author can rerun.
     ext_dir="$(mktemp -d /tmp/ci-ext-XXXXXX)"
     fetch_failure_logs "$num" "$ext_dir"
     class="$(classify_failures "$ext_dir")"
     rm -rf "$ext_dir"
+    head_sha="$(gh pr view "$num" --repo "$GITHUB_REPO" --json headRefOid --jq .headRefOid 2>/dev/null || true)"
+    if [[ "$class" == env || "$class" == flaky ]]; then
+      # same rerun arbitration as the own path: a rerun that did not help
+      # promotes flaky to a comment (env keeps retrying within budget).
+      prev="$(ledger_entry "$num")"; prev_sha="${prev%%$'\t'*}"; prev_action="${prev##*$'\t'}"
+      if [[ -n "$head_sha" && "$prev_sha" == "$head_sha" && "$prev_action" == rerun && "$class" == flaky ]]; then
+        class=substantive
+      fi
+      if [[ "$class" != substantive ]]; then
+        if rerun_ci "$num"; then
+          log "pr=$num: external, classified $class — CI retripped via the $PR_LABEL label"
+          [[ -n "$head_sha" ]] && python3 "$DIR/lines/pr-ci-collect.py" stamp "$num" "$head_sha" rerun >>"$LOG_DIR/daemon.log" 2>&1 || true
+        else
+          log "pr=$num: external label retrip failed"
+        fi
+        CUR_PR=""; rm -f "$CUR_FILE"
+        n=$((n + 1))
+        continue
+      fi
+    fi
     if [[ "$class" == substantive ]]; then
       body="$(mktemp)"
       { echo "Hi! Our CI watcher noticed the latest checks on this PR are failing:"
@@ -227,14 +248,13 @@ while IFS=$'\t' read -r num branch url mid fails scope; do
       } > "$body"
       if gh pr comment "$num" --repo "$GITHUB_REPO" --body-file "$body" >>"$LOG_DIR/daemon.log" 2>&1; then
         log "pr=$num: external CI failure commented on the PR"
-        head_sha="$(gh pr view "$num" --repo "$GITHUB_REPO" --json headRefOid --jq .headRefOid 2>/dev/null || true)"
         [[ -n "$head_sha" ]] && python3 "$DIR/lines/pr-ci-collect.py" stamp "$num" "$head_sha" notify >>"$LOG_DIR/daemon.log" 2>&1 || true
       else
         log "pr=$num: external CI failure comment FAILED — left unstamped (retry next tick)"
       fi
       rm -f "$body"
     else
-      log "pr=$num: external CI failure classified as $class (restartable) — author-side matter, skipped"
+      log "pr=$num: external CI failure classified as $class — nothing safe to do, skipped"
     fi
     CUR_PR=""; rm -f "$CUR_FILE"
     n=$((n + 1))
