@@ -24,6 +24,8 @@ mkdir -p "$LOG_DIR"
 import fcntl, json, os, shutil, sys, time, urllib.error, urllib.request
 
 base_dir = sys.argv[1]
+sys.path.insert(0, os.path.dirname(base_dir))  # repo root
+from hfv_source import is_gh
 store = os.path.join(base_dir, "issues.jsonl")
 # Shared store lock (see issue_recorder.py STORE_LOCK).
 _lock = open(os.path.join(base_dir, ".store.lock"), "w")
@@ -95,7 +97,7 @@ def http(method, url, token=None, body=None):
 def message_gone(mid, token):
     """True only on a definitive not-exist/recalled verdict; network errors
     (None response) stay conservative and count as alive."""
-    if mid.startswith("gh-"):
+    if is_gh(mid):
         d = gh_view(mid[3:])
         if d is None:
             return False  # cannot prove closed — stay conservative
@@ -128,7 +130,7 @@ def drop_record(records, mid, token=None, recall_claim_reply=True):
     handover instead."""
     for r in records:
         if r.get("message_id") == mid:
-            if recall_claim_reply and not mid.startswith("gh-"):
+            if recall_claim_reply and not is_gh(mid):
                 claim_reply = r.get("claim_reply_id")
                 if claim_reply and token:
                     recall_message(claim_reply, token)
@@ -350,13 +352,13 @@ def main():
     # a Feishu auth outage defers only the feishu records — they stay open and
     # are simply retried next pass, nothing is lost.
     token = ""
-    if any(not r.get("message_id", "").startswith("gh-") for r in opens):
+    if any(not is_gh(r.get("message_id")) for r in opens):
         auth = http("POST", BASE + "/auth/v3/tenant_access_token/internal",
                     body={"app_id": cfg["APP_ID"], "app_secret": cfg["APP_SECRET"]})
         token = (auth or {}).get("tenant_access_token", "")
     if not token:
         before = len(opens)
-        opens = [r for r in opens if r.get("message_id", "").startswith("gh-")]
+        opens = [r for r in opens if is_gh(r.get("message_id"))]
         if before != len(opens):
             print("issue-select: no tenant token, %d feishu candidate(s) deferred"
                   % (before - len(opens)))
@@ -387,7 +389,7 @@ def main():
 
     def third_party_claimed(rec, token):
         mid = rec.get("message_id", "")
-        if mid.startswith("gh-"):
+        if is_gh(mid):
             d = gh_view(mid[3:])
             return bool(d and d.get("assignees"))
         third, _, _, _ = ir.thread_scan(
@@ -405,7 +407,7 @@ def main():
             print("issue-select: %s dropped (gone/recalled)" % mid)
             continue
         if third_party_claimed(r, token):
-            if mid.startswith("gh-"):
+            if is_gh(mid):
                 gh_comment(mid[3:], "Stepping aside — this issue now has an assignee. (automated triage)")
             elif not ir.send_reply(mid, ir.ABANDON_TEXT, token):
                 print("issue-select: abandon-reply failed for %s (best-effort)" % mid)
@@ -414,7 +416,7 @@ def main():
             print("issue-select: %s dropped (third party claimed, we step aside)" % mid)
             continue
         if r.get("select_count", 0) >= MAX_PICKS:
-            if mid.startswith("gh-"):
+            if is_gh(mid):
                 gh_comment(mid[3:], "We attempted this issue several times without a solid fix and are setting it aside for now — please re-triage. (automated triage)")
             elif not ir.send_reply(mid, FAIL_NOTE, token):
                 print("issue-select: fail-note failed for %s (best-effort)" % mid)

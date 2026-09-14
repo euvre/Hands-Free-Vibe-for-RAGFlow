@@ -17,6 +17,8 @@ import os
 import sys
 
 DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(DIR))  # repo root, for hfv_source
+from hfv_source import is_gh
 
 
 def load(name):
@@ -58,7 +60,7 @@ def main():
     if (d.get("source") or "feishu") == "github":
         gctx = dict(ctx)
         mid = d.get("message_id", "")
-        num = d.get("number") or (mid[3:] if mid.startswith("gh-") else "?")
+        num = d.get("number") or (mid[3:] if is_gh(mid) else "?")
         gctx["number"] = str(num)
         gctx["url"] = d.get("url") or ""
         # repo root so the template can point at helper scripts by absolute

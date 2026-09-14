@@ -17,6 +17,7 @@
 # is no current.json (no open issue), this is a no-op.
 set -u
 DIR="$(cd "$(dirname "$0")/.." && pwd)"  # repo root (this script lives in lines/)
+source "$DIR/framework/source.sh"
 SUF=""
 [[ -n "${HFV_SLOT:-}" ]] && SUF="-s$HFV_SLOT"
 ISSUE_FILE="$DIR/issues/current${SUF}.json"
@@ -41,7 +42,7 @@ fi
 # the issue, idempotent per record lifecycle (claim_reply_id stores the gh
 # comment URL). The Feishu machinery below (at-tag template, reply-id recovery
 # from the live thread) does not apply and is skipped entirely.
-if [[ "$MID" == gh-* ]]; then
+if is_gh "$MID"; then
   CLAIMED_ID="$(python3 - "$STORE_FILE" "$ISSUE_FILE" 2>/dev/null <<'PYEOF' || true
 import json, sys
 cur = {}

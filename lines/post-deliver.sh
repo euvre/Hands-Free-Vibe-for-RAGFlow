@@ -8,6 +8,7 @@
 # failed earlier — issue-sync/post-task already handles those states).
 set -u
 DIR="$(cd "$(dirname "$0")/.." && pwd)"  # repo root (this script lives in lines/)
+source "$DIR/framework/source.sh"
 SUF=""
 [[ -n "${HFV_SLOT:-}" ]] && SUF="-s$HFV_SLOT"
 DELIVER_DIR="$DIR/deliver$SUF"
@@ -98,7 +99,7 @@ fi
 
 # Reply in the original thread (or as a comment on the GitHub issue for
 # gh- records — issue-reply.py dispatches on the id prefix) with the PR link.
-if [[ "$MID" == gh-* ]]; then
+if is_gh "$MID"; then
   REPLY_TEXT="Fix proposed in $PR_URL — root-cause analysis and fix details are in the PR description; it closes this issue when merged."
 else
   REPLY_TEXT="已提交 PR：$PR_URL 。根因分析及修复说明详见 PR 描述。"

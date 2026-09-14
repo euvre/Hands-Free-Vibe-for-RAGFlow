@@ -11,6 +11,8 @@ import urllib.request
 import urllib.error
 
 DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(DIR))  # repo root, for hfv_source
+from hfv_source import is_gh
 CONFIG = os.path.join(DIR, "config")
 BASE = "https://open.feishu.cn/open-apis"
 
@@ -50,7 +52,7 @@ def main():
     # Source dispatch: a "gh-<number>" id identifies a GitHub issue record
     # (source=github) — the reply goes out as a comment on that issue via the
     # gh CLI (host-side auth) instead of the Feishu thread API.
-    if mid.startswith("gh-"):
+    if is_gh(mid):
         import os
         import subprocess
         cfg = load_config()

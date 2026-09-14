@@ -16,6 +16,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from hfv_source import is_gh
 
 DIR = os.path.dirname(os.path.abspath(__file__))
 STORE = os.path.join(DIR, "issues.jsonl")
@@ -594,7 +595,7 @@ def main():
     for mid, r in list(items.items()):
         if r.get("state") in ("done", "merged", "closed", "abandoned", "fail"):
             continue
-        if mid.startswith("gh-"):
+        if is_gh(mid):
             # GitHub-sourced records have no Feishu message to refresh: the
             # fetch below 404s on them and drop_record would remove them as
             # "gone". Their lifecycle is owned by issue-sync.sh

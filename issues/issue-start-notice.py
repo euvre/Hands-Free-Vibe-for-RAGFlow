@@ -16,6 +16,8 @@ import subprocess
 import sys
 
 DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, DIR)  # DIR is the repo root here, for hfv_source
+from hfv_source import is_gh
 STORE = os.path.join(DIR, "issues.jsonl")
 STORE_LOCK = os.path.join(DIR, ".store.lock")
 REPLY = os.path.join(DIR, "issue-reply.py")
@@ -27,7 +29,7 @@ def main():
         return 0
     cur = json.load(open(sys.argv[1]))
     mid = cur.get("message_id") or ""
-    if not mid or mid.startswith("gh-") or not cur.get("claim_reply_id"):
+    if not mid or is_gh(mid) or not cur.get("claim_reply_id"):
         return 0
 
     lock = open(STORE_LOCK, "w")

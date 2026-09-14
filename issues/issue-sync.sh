@@ -25,6 +25,8 @@ mkdir -p "$LOG_DIR"
 import fcntl, json, os, re, shutil, sys, time, urllib.error, urllib.request
 
 base_dir = sys.argv[1]
+sys.path.insert(0, os.path.dirname(base_dir))  # repo root
+from hfv_source import is_gh
 store = os.path.join(base_dir, "issues.jsonl")
 # Shared store lock (see issue_recorder.py STORE_LOCK).
 _lock = open(os.path.join(base_dir, ".store.lock"), "w")
@@ -117,7 +119,7 @@ def main():
     # The tenant token is only needed by the FEISHU classify path (live thread
     # reads). gh- records verify through gh and sync regardless.
     token = ""
-    if any(not r.get("message_id", "").startswith("gh-") for r in targets):
+    if any(not is_gh(r.get("message_id")) for r in targets):
         auth = http("POST", BASE + "/auth/v3/tenant_access_token/internal",
                     body={"app_id": cfg["APP_ID"], "app_secret": cfg["APP_SECRET"]})
         token = (auth or {}).get("tenant_access_token", "")
@@ -234,7 +236,7 @@ def main():
             kept.append(r)  # filtered out (slot source affinity) — untouched
             continue
         mid = r.get("message_id", "")
-        if mid.startswith("gh-"):
+        if is_gh(mid):
             action, pr, why = gh_classify(r)
             if action == "delete":
                 # public handover note only when a human took it over; a plain
