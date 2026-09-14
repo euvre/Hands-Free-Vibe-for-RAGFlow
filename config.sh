@@ -40,14 +40,9 @@ BLAME_REVIEWER_EXCLUDE="${BLAME_REVIEWER_EXCLUDE:-}"  # 永不自动请求为 re
 WORK_START="${WORK_START:-09:30}"
 WORK_END="${WORK_END:-20:00}"
 
-# ---- 总结系统（树归并）----
+# ---- 总结系统（leaf 归并 → playbook-effect 八宫引擎）----
 LESSONS_PER_TASK="${LESSONS_PER_TASK:-4}"
-TREE_FINAL_COUNT="${TREE_FINAL_COUNT:-16}"
 SUMMARIZE_SECONDS="${SUMMARIZE_SECONDS:-900}"
-GOLDEN_HIT_RATE="${GOLDEN_HIT_RATE:-0.6}"
-GOLDEN_MIN_OPPS="${GOLDEN_MIN_OPPS:-4}"
-FUSE_SIM="${FUSE_SIM:-0.6}"
-FUSE_COOCC="${FUSE_COOCC:-3}"
 
 # 显式传入的 RAGFLOW_MAIN 优先于站点钉值：pr-e2e.sh exec 用
 # -e RAGFLOW_MAIN=<PR worktree> 把容器内的 ragflow-up.sh/build.sh 指向该 PR

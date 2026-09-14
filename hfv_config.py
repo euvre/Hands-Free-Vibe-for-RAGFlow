@@ -39,12 +39,7 @@ DEFAULTS = {
     "WORK_START": "09:30",
     "WORK_END": "20:00",
     "LESSONS_PER_TASK": "4",
-    "TREE_FINAL_COUNT": "16",
     "SUMMARIZE_SECONDS": "900",
-    "GOLDEN_HIT_RATE": "0.6",
-    "GOLDEN_MIN_OPPS": "4",
-    "FUSE_SIM": "0.6",
-    "FUSE_COOCC": "3",
 }
 
 

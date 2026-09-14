@@ -49,11 +49,6 @@ CI_FIX_MAX_PER_DAY=3               # 同一 PR 每自然日最多修几次
 BLAME_MAX_REVIEWERS=1              # 额外 reviewer 上限（合并负责人固定另算）
 BLAME_REVIEWER_EXCLUDE=            # 永不自动请求为 reviewer 的 login（逗号分隔）
 
-# ---- 总结系统 ----
+# ---- 总结系统（leaf 归并 → playbook-effect 八宫引擎）----
 LESSONS_PER_TASK=4
-TREE_FINAL_COUNT=16
 SUMMARIZE_SECONDS=900
-GOLDEN_HIT_RATE=0.6
-GOLDEN_MIN_OPPS=4
-FUSE_SIM=0.6
-FUSE_COOCC=3
