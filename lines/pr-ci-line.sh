@@ -210,9 +210,9 @@ while IFS=$'\t' read -r num branch url mid fails scope; do
   CUR_PR="$num"; echo "$num" > "$CUR_FILE"
   if [[ "$scope" == external ]]; then
     # External PR (not ours): no branch write and no label rerun rights —
-    # classify and, for non-restartable failures, DM the author (when
-    # Feishu-mappable) + the merge owner. Restartable classes are skipped
-    # quietly: only the author can rerun.
+    # classify and, for non-restartable failures, DM the author only (when
+    # Feishu-mappable). Restartable classes are skipped quietly: only the
+    # author can rerun.
     ext_dir="$(mktemp -d /tmp/ci-ext-XXXXXX)"
     fetch_failure_logs "$num" "$ext_dir"
     class="$(classify_failures "$ext_dir")"
@@ -221,7 +221,6 @@ while IFS=$'\t' read -r num branch url mid fails scope; do
       text="PR #$num 的 CI 失败（非重启性：$fails），需要人工处理：$url"
       author="$(gh pr view "$num" --repo "$GITHUB_REPO" --json author --jq .author.login 2>/dev/null || true)"
       [[ -n "$author" && "$author" != "$MERGE_OWNER_LOGIN" ]] && python3 "$DIR/tools/feishu-dm.py" dm "$author" "$text" >>"$LOG_DIR/daemon.log" 2>&1 || true
-      python3 "$DIR/tools/feishu-dm.py" dm-owner "$text" >>"$LOG_DIR/daemon.log" 2>&1 || true
       log "pr=$num: external CI failure notified (author=$author)"
       head_sha="$(gh pr view "$num" --repo "$GITHUB_REPO" --json headRefOid --jq .headRefOid 2>/dev/null || true)"
       [[ -n "$head_sha" ]] && python3 "$DIR/lines/pr-ci-collect.py" stamp "$num" "$head_sha" notify >>"$LOG_DIR/daemon.log" 2>&1 || true
