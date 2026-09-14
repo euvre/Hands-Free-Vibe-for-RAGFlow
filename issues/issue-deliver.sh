@@ -56,6 +56,16 @@ log() { echo "[$TS] mid=${MID:-} $*" >> "$LOG"; }
 
 # --- 0) snapshot backup: index (incl. untracked after add -A) → tree → commit → ref
 git add -A
+# Hard guard (2026-09-14): the worktree pool lives under $RAGFLOW_MAIN/wt/ and
+# host-side delivery runs at the main root — a plain `git add -A` there sweeps
+# every sibling worktree into the commit (PRs #19553/#19554/#19581 shipped
+# 4.6k-file wt/** dumps). A delivery containing wt/ paths is ALWAYS garbage:
+# abort loudly instead of pushing a polluted branch.
+if git diff --cached --name-only | grep -q '^wt/'; then
+  echo "deliver aborted: staged changes include wt/ worktree paths — the delivery is running at the repo root, not the task worktree" >&2
+  log "FAILED guard: wt/ paths staged (worktree sweep) — delivery aborted"
+  exit 1
+fi
 TREE=$(git write-tree)
 BACKUP_COMMIT=$(git commit-tree "$TREE" -p HEAD -m "backup: pre-deliver snapshot $TS")
 git update-ref "refs/${BACKUP_PREFIX}${TS}" "$BACKUP_COMMIT"
@@ -84,7 +94,12 @@ else
   git checkout -qb "$BRANCH"
 fi
 if git diff --cached --quiet; then
-  log "branch $BRANCH: nothing to commit, using HEAD $(git rev-parse --short HEAD)"
+  # An empty staged set means the agent's edits never reached THIS workdir
+  # (e.g. host post group delivering at the main root while the task worked in
+  # a wt/ worktree). Pushing HEAD would ship an unrelated rolling tip — abort.
+  echo "deliver aborted: nothing staged at $WORKDIR — the task's edits live in its worktree, not here" >&2
+  log "FAILED guard: empty staged set — refusing to push the bare rolling HEAD"
+  exit 1
 else
   git commit -q -F "$MSG"
 fi
