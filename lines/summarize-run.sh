@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # cline-feishu summarize sweep: for each finished-but-unsummarized MAIN/FEAT
 # run log (newest first, at most 2 per sweep), condense it mechanically, ask
-# cline for ≤LESSONS_PER_TASK reusable rules, store them as a tree LEAF, then
-# run summarize-tree.py — the tournament engine that stride-groups leaves,
-# merges upward (hash-cached), maintains the hit-rate/affinity stats table,
-# solidifies golden rules and fuses high-affinity pairs.
+# cline for ≤LESSONS_PER_TASK reusable rules, store them as a leaf, then run
+# playbook-effect.py — the eight-houses engine that places each lesson where it
+# saves the most iterations and solidifies golden rules by streak.
 set -u
 
 DAEMON_DIR="$HOME/hands-free-vibe"
@@ -103,7 +102,6 @@ PYEOF
 done
 
 # tournament pass: stride-group → merge (hash-cached) → stats → golden/fusion
-python3 "$DAEMON_DIR/lines/summarize-tree.py" >> "$LOG_DIR/summarize.log" 2>&1 || true
 # effect pass: eight houses (iteration octiles), per-lesson iterations-saved,
 # objective value V; owns the playbook rolling section from here on
 python3 "$DAEMON_DIR/lines/playbook-effect.py" >> "$LOG_DIR/summarize.log" 2>&1 || true

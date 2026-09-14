@@ -69,7 +69,7 @@ def main():
     extra = load("%s.md.tmpl" % kind)
     if extra:
         lines.append(extra.format(**ctx).rstrip())
-    # golden lessons: high hit-rate rules solidified by summarize-tree.py —
+    # golden lessons: high hit-rate rules solidified by playbook-effect.py —
     # injected here so every task run (main/feat) carries them in-prompt.
     gp = os.path.join(DIR, "..", "playbook-golden.md")
     if os.path.exists(gp):
