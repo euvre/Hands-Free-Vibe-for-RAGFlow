@@ -202,12 +202,36 @@ PY
 }
 
 cand=0
-while IFS=$'\t' read -r num branch url mid fails; do
+while IFS=$'\t' read -r num branch url mid fails scope; do
   cand=$((cand+1)); (( (cand - 1) % N_INST == INST - 1 )) || continue
   [[ "$num" =~ ^[0-9]+$ ]] || continue
   [[ -n "$fails" ]] || fails="(unknown — run gh pr checks $num)"
   log "ci-fix target pr=$num branch=$branch fails=$fails"
   CUR_PR="$num"; echo "$num" > "$CUR_FILE"
+  if [[ "$scope" == external ]]; then
+    # External PR (not ours): no branch write and no label rerun rights —
+    # classify and, for non-restartable failures, DM the author (when
+    # Feishu-mappable) + the merge owner. Restartable classes are skipped
+    # quietly: only the author can rerun.
+    ext_dir="$(mktemp -d /tmp/ci-ext-XXXXXX)"
+    fetch_failure_logs "$num" "$ext_dir"
+    class="$(classify_failures "$ext_dir")"
+    rm -rf "$ext_dir"
+    if [[ "$class" == substantive ]]; then
+      text="PR #$num 的 CI 失败（非重启性：$fails），需要人工处理：$url"
+      author="$(gh pr view "$num" --repo "$GITHUB_REPO" --json author --jq .author.login 2>/dev/null || true)"
+      [[ -n "$author" && "$author" != "$MERGE_OWNER_LOGIN" ]] && python3 "$DIR/tools/feishu-dm.py" dm "$author" "$text" >>"$LOG_DIR/daemon.log" 2>&1 || true
+      python3 "$DIR/tools/feishu-dm.py" dm-owner "$text" >>"$LOG_DIR/daemon.log" 2>&1 || true
+      log "pr=$num: external CI failure notified (author=$author)"
+      head_sha="$(gh pr view "$num" --repo "$GITHUB_REPO" --json headRefOid --jq .headRefOid 2>/dev/null || true)"
+      [[ -n "$head_sha" ]] && python3 "$DIR/lines/pr-ci-collect.py" stamp "$num" "$head_sha" notify >>"$LOG_DIR/daemon.log" 2>&1 || true
+    else
+      log "pr=$num: external CI failure classified as $class (restartable) — author-side matter, skipped"
+    fi
+    CUR_PR=""; rm -f "$CUR_FILE"
+    n=$((n + 1))
+    continue
+  fi
   wt="$(prepare_worktree "$num" "$branch")" || continue
   fetch_failure_logs "$num" "$wt"
   head_sha="$(git -C "$CLONE" rev-parse "$FORK_REMOTE/$branch" 2>/dev/null || echo "")"

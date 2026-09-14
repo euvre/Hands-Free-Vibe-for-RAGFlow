@@ -119,9 +119,9 @@ def failing_checks(num):
     return "none", []
 
 
-def row(num, branch, url, fails):
-    return "%d\t%s\t%s\t%s\t%s" % (num, branch, url, mid_for(num),
-                                   ",".join(fails))
+def row(num, branch, url, fails, scope="own"):
+    return "%d\t%s\t%s\t%s\t%s\t%s" % (num, branch, url, mid_for(num),
+                                       ",".join(fails), scope)
 
 
 def gate(num, sha, led):
@@ -178,6 +178,36 @@ def collect():
             continue
         log("pr %d: CI FAILING (%s) -> candidate" % (num, ",".join(fails)))
         print(row(num, branch, pr.get("url") or "", fails))
+
+    # External PRs: we cannot fix or rerun them (no write/label rights on
+    # their branches) — surface them for the notify-only path instead.
+    rc, out = run(["gh", "pr", "list", "--repo", REPO,
+                   "--state", "open", "--limit", "100",
+                   "--json", "number,headRefName,headRefOid,url,mergeable,author"])
+    if rc != 0 or not out.strip():
+        return
+    try:
+        prs = json.loads(out)
+    except Exception:
+        return
+    for pr in prs:
+        if ((pr.get("author") or {}).get("login") or "").lower() == OWN.lower():
+            continue
+        num = pr["number"]
+        branch = pr.get("headRefName") or ""
+        sha = pr.get("headRefOid") or ""
+        if not branch or not sha:
+            continue
+        if (pr.get("mergeable") or "").upper() != "MERGEABLE":
+            continue
+        state, fails = failing_checks(num)
+        if state != "fail":
+            continue
+        why = gate(num, sha, led)
+        if why:
+            continue
+        log("pr %d: external PR CI FAILING (%s) -> notify candidate" % (num, ",".join(fails)))
+        print(row(num, branch, pr.get("url") or "", fails, scope="external"))
 
 
 def resolve(num):
