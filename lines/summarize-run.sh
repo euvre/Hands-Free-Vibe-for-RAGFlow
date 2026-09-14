@@ -77,12 +77,15 @@ PYEOF
 )"
 
   # keep plausible rule lines only, cap count and length → tree leaf file
+  # language gate: the prompt demands English but models still drift into CJK;
+  # a CJK rule also defeats norm()/lid() dedup downstream — drop it here
   tid="$(grep -oE 'task #[0-9]+' "$LOG" | head -1 | grep -oE '[0-9]+' || true)"
   key="task-${tid:-$name}"
   printf '%s\n' "$out" | sed 's/\r//g' \
     | grep -viE '^\s*$|NONE' \
     | sed -E 's/^\s*[-*•]+\s*//; s/^[0-9]+[.)]\s*//' \
     | grep -vE '^(#|`|：|:)' \
+    | LC_ALL=C.UTF-8 grep -vP '[\x{4e00}-\x{9fff}]' \
     | head -n "$LESSONS_PER_TASK" \
     | cut -c1-120 > "$STAMP_DIR/.new-rules"
 

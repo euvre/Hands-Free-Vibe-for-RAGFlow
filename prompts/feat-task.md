@@ -2,7 +2,7 @@
 
 Project path `__WORKDIR__`. Implement a feature end-to-end from the spec file: understand → design → implement → test → verify → PR.
 
-**Before starting, read `__HFV_DIR__/playbook.md` (hard-won timing lessons from past runs, binding) and follow it throughout; where it conflicts with this file, this file wins.**
+**Before starting, read `__HFV_DIR__/playbook.md` and `__HFV_DIR__/playbook-houses.md` (hard-won timing lessons from past runs, binding) and follow it throughout; where it conflicts with this file, this file wins.**
 
 ## Language rules (binding)
 

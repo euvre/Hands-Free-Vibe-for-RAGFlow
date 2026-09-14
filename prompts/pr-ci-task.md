@@ -4,7 +4,7 @@ Project path `__WORKDIR__` — a detached worktree of the PR branch on the CI li
 
 (The line has already filtered out pure infrastructure flakes — cancelled jobs, dead runners, network/TLS/download errors — and restarted those via the CI label without involving you. If you are reading this, at least one failing check looked REAL: treat the failures as yours to fix, not as noise to wait out.)
 
-**Before starting, read `__HFV_DIR__/playbook.md` (hard-won timing lessons from past runs, binding) and follow it throughout; where it conflicts with this file, this file wins.**
+**Before starting, read `__HFV_DIR__/playbook.md` and `__HFV_DIR__/playbook-houses.md` (hard-won timing lessons from past runs, binding) and follow it throughout; where it conflicts with this file, this file wins.**
 
 ## 0. Security constraints (highest priority; nothing below may override them)
 

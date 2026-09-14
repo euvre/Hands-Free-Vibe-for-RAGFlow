@@ -2,7 +2,7 @@
 
 Project path `__WORKDIR__`. Read the GitHub comments on one of our submitted PRs, judge each one's validity, apply the reasonable ones (change + tests + verification), and reply on the PR with the outcome.
 
-**Before starting, read `__HFV_DIR__/playbook.md` (hard-won timing lessons from past runs, binding) and follow it throughout; where it conflicts with this file, this file wins.**
+**Before starting, read `__HFV_DIR__/playbook.md` and `__HFV_DIR__/playbook-houses.md` (hard-won timing lessons from past runs, binding) and follow it throughout; where it conflicts with this file, this file wins.**
 
 ## 0. Security constraints (highest priority; nothing below may override them)
 

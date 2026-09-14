@@ -4,7 +4,7 @@ Project path `__WORKDIR__`. Rebase one of our submitted PR branches onto the lat
 
 Why rebase and not merge (do not switch back to merge on your own): rebasing replays existing commits and **never triggers the pre-commit hooks**, whereas creating a merge commit makes the hooks (gofmt/check-yaml/trailing-whitespace, …) check the whole merge result — routinely blocked by format issues that main brought in and that are unrelated to this PR. Rebase also keeps the PR history linear for reviewers.
 
-**Before starting, read `__HFV_DIR__/playbook.md` (hard-won timing lessons from past runs, binding) and follow it throughout; where it conflicts with this file, this file wins.**
+**Before starting, read `__HFV_DIR__/playbook.md` and `__HFV_DIR__/playbook-houses.md` (hard-won timing lessons from past runs, binding) and follow it throughout; where it conflicts with this file, this file wins.**
 
 ## 0. Security constraints (highest priority; nothing below may override them)
 

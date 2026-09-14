@@ -2,7 +2,7 @@
 
 Project path `__WORKDIR__`. This time we are the reviewer: audit one pull request authored by someone else — code quality (section 3), end-to-end verification (section 4), verdict file (section 5). The framework posts the reply to GitHub after this task ends; **this task itself never publishes anything**.
 
-**Before starting, read `__HFV_DIR__/playbook.md` (hard-won timing lessons from past runs, binding) and follow it throughout; where it conflicts with this file, this file wins.**
+**Before starting, read `__HFV_DIR__/playbook.md` and `__HFV_DIR__/playbook-houses.md` (hard-won timing lessons from past runs, binding) and follow it throughout; where it conflicts with this file, this file wins.**
 
 ## Language rules (binding)
 
