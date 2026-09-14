@@ -213,7 +213,6 @@ while IFS=$'\t' read -r num branch url mid fails scope; do
     # ci-label retrip works on any PR via our triage permission — so the
     # arbitration mirrors the own path: env/flaky get a rerun first, and only
     # a substantive failure earns the author a comment (once per head sha).
-    # quietly: only the author can rerun.
     ext_dir="$(mktemp -d /tmp/ci-ext-XXXXXX)"
     fetch_failure_logs "$num" "$ext_dir"
     class="$(classify_failures "$ext_dir")"
