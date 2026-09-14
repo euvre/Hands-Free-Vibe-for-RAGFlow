@@ -23,16 +23,19 @@ Record rules (all read-only GitHub calls via the gh CLI, host-side auth):
 text_full carries the title, url, body and the most recent comments (capped)
 so the LLM run works from current.json exactly like a Feishu issue; reporter
 comments are mirrored into `replies` with the same {sender_type, text} shape
-the task prompt already reads. No attachments are downloaded — screenshot
-URLs stay in the text (see task-templates/github.md.tmpl for how the run
-consumes them).
+the task prompt already reads. Screenshot/video URLs referenced in the body
+or comments (markdown images, user-attachments links) are downloaded into
+attachments/gh-<number>/ at record time, so the vision pre-pass transcribes
+them exactly like Feishu attachments.
 """
 import fcntl
 import json
 import os
+import re
 import subprocess
 import sys
 import time
+import urllib.request
 
 base_dir = os.path.dirname(os.path.abspath(__file__))
 store = os.path.join(base_dir, "issues.jsonl")
@@ -68,6 +71,55 @@ def gh_list():
     except Exception as e:
         print("gh-record: gh issue list error: %s" % e)
         return None
+
+
+IMG_URL_RE = re.compile(
+    r"!\[[^\]]*\]\((https?://[^\s)]+)\)"           # markdown image
+    r"|(https?://github\.com/user-attachments/assets/[\w-]+)"  # bare link
+    r"|(https?://[^\s)>]+\.(?:png|jpe?g|gif|webp|mp4|mov))", re.I)
+ATTACH_BASE = os.path.join(base_dir, "attachments")
+
+
+def _ext_for(url, ctype):
+    """Extension from the Content-Type (user-attachments links carry none)."""
+    table = {"image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif",
+             "image/webp": ".webp", "video/mp4": ".mp4", "video/quicktime": ".mov"}
+    if ctype in table:
+        return table[ctype]
+    m = re.search(r"\.(png|jpe?g|gif|webp|mp4|mov)(?:\?|$)", url, re.I)
+    return "." + m.group(1).lower() if m else ""
+
+
+def download_images(mid, texts):
+    """Pull every image/video URL out of the given texts into
+    attachments/<mid>/img_NN.<ext>; returns the repo-relative paths."""
+    urls = []
+    for text in texts:
+        for m in IMG_URL_RE.finditer(text or ""):
+            u = next(g for g in m.groups() if g)
+            if u not in urls:
+                urls.append(u)
+    if not urls:
+        return []
+    adir = os.path.join(ATTACH_BASE, mid)
+    os.makedirs(adir, exist_ok=True)
+    out = []
+    for i, url in enumerate(urls, 1):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "hfv-gh-recorder"})
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                ctype = (resp.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+                ext = _ext_for(url, ctype)
+                if not ext:
+                    continue  # neither a known media type nor a media suffix
+                data = resp.read(20 * 1024 * 1024)
+            name = "img_%02d%s" % (i, ext)
+            with open(os.path.join(adir, name), "wb") as f:
+                f.write(data)
+            out.append(os.path.join("attachments", mid, name))
+        except Exception as e:
+            print("gh-record: image download failed %s: %s" % (url[:80], e))
+    return out
 
 
 def main():
@@ -121,9 +173,10 @@ def main():
             "sender_type": "user",
             "text": "%s: %s" % ((c.get("author") or {}).get("login", "?"),
                                 (c.get("body") or "")[:1500]),
-            "images": [],
+            "images": download_images(mid, [c.get("body") or ""]),
         } for c in recent]
         body = (it.get("body") or "").strip()
+        images = download_images(mid, [body])
         text_full = "GitHub issue #%d %s\n\n%s\n\n--- reporter/recent comments ---\n%s" % (
             it.get("number", 0), it.get("url", ""),
             body[:4000] or "(no body)",
@@ -136,7 +189,7 @@ def main():
             "text": ("gh#%d %s" % (it.get("number", 0),
                                    (it.get("title") or "").strip()))[:200],
             "text_full": text_full,
-            "images": [],
+            "images": images,
             "files": [],
             "resource_keys": [],
             "replies": replies,
