@@ -43,7 +43,7 @@ sys.path.insert(0, DIR)
 from hfv_config import load as _load_hfv  # noqa: E402
 
 _HFV = _load_hfv()
-CH = _HFV.get("CLICKHOUSE_HTTP", "http://127.0.0.1:8123/")
+CH = _HFV["CLICKHOUSE_HTTP"]
 STATE = os.path.join(DIR, "summarize")
 STATS_F = os.path.join(STATE, "stats.json")
 GROUPS_F = os.path.join(STATE, "groups.json")

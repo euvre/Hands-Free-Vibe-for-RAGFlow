@@ -8,6 +8,8 @@ RAGFLOW_MAIN="${RAGFLOW_MAIN:-}"
 # 路径命名空间隔离（wt/review-<n>、wt/rebase-<n>、wt/audit-<n>、wt/manual-<n>）。
 RAGFLOW_CI_CLONE="${RAGFLOW_CI_CLONE:-}"
 CLINE_BIN="${CLINE_BIN:-$HOME/.npm-global/bin/cline}"
+# host 上的 ClickHouse（run metrics / tasks 簿记；容器内经 socat 转发到同名端口）
+CLICKHOUSE_HTTP="${CLICKHOUSE_HTTP:-http://127.0.0.1:8123/}"
 GITHUB_REPO="${GITHUB_REPO:-}"
 FORK_REMOTE="${FORK_REMOTE:-}"
 OWN_LOGIN="${OWN_LOGIN:-}"

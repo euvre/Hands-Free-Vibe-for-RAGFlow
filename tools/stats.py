@@ -5,10 +5,15 @@ Usage: stats.py [hours]   (default 24; use 168 for the last 7 days)
 """
 import json
 import sys
+import os
 import urllib.parse
 import urllib.request
 
-CH = "http://127.0.0.1:8123/"
+DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root
+sys.path.insert(0, DIR)
+from hfv_config import load as _load_hfv
+
+CH = _load_hfv()["CLICKHOUSE_HTTP"]
 
 
 def q(sql):

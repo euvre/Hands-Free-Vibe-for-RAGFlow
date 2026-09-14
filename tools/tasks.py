@@ -36,7 +36,11 @@ CURRENT = os.path.join(DIR, "issues", "current%s.json" % _SUF)
 CURRENT_MARKER = os.path.join(TASK_DIR, ".current%s" % _SUF)
 RUN_INFO = os.path.join(TASK_DIR, ".last-run-info%s" % _SUF)
 REGISTRY_LOCK = os.path.join(TASK_DIR, ".registry.lock")
-CH = "http://127.0.0.1:8123/"
+DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root
+sys.path.insert(0, DIR)
+from hfv_config import load as _load_hfv
+
+CH = _load_hfv()["CLICKHOUSE_HTTP"]
 TTL_DAYS = 90
 
 

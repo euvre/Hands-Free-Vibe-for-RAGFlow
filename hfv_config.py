@@ -13,6 +13,7 @@ DEFAULTS = {
     "RAGFLOW_MAIN": "",
     "RAGFLOW_CI_CLONE": "",
     "CLINE_BIN": "$HOME/.npm-global/bin/cline",
+    "CLICKHOUSE_HTTP": "http://127.0.0.1:8123/",
     "GITHUB_REPO": "",
     "FORK_REMOTE": "",
     "OWN_LOGIN": "",

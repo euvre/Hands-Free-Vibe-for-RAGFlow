@@ -16,6 +16,7 @@ run-task.sh / run-feat.sh. All tables carry a 90-day TTL.
 """
 import json
 import re
+import os
 import sys
 import urllib.error
 import urllib.parse
@@ -23,7 +24,11 @@ import urllib.request
 from collections import defaultdict
 from datetime import datetime, timezone
 
-CH = "http://127.0.0.1:8123/"
+DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root
+sys.path.insert(0, DIR)
+from hfv_config import load as _load_hfv
+
+CH = _load_hfv()["CLICKHOUSE_HTTP"]
 TTL_DAYS = 90
 
 QUOTA_PATTERN = re.compile(
