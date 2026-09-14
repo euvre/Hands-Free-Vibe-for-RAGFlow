@@ -1,59 +1,81 @@
 # hands-free-vibe
 
-[English](README.en.md)
+[中文](README.zh-cn.md)
 
-**hands-free-vibe（hfv）** 是一个无人值守的开源仓库维护机器人：它以飞书群里的 issue 反馈为入口，自动完成「认领 → 复现 → 修复 → 验证 → 交付 PR → 跟进评审 → 重基 → 报告可合并」的完整闭环，全程由 LLM agent（Cline CLI）在一次性 Docker 容器里执行。
+**hands-free-vibe (hfv)** is an unattended maintenance robot for an open-source
+repository. It takes issue reports from a Feishu (Lark) group and drives the
+full loop — **claim → reproduce → fix → verify → deliver a PR → follow the
+review → rebase → report merge-readiness** — with an LLM agent (the Cline CLI)
+running inside a throwaway Docker container per task.
 
-## 它在做什么
+## The lines
 
-| 线 | 职责 |
+| Line | What it does |
 |---|---|
-| **issue** | 监听飞书群的新反馈，截图经视觉模型转写后，LLM 在一次性容器里复现/修复/验证，交付 PR 并在群里回复 |
-| **feat** | 手动触发（`hfv feat -f spec.md`）：按需求文档实现一个完整特性并交付 PR |
-| **pr-review** | 跟踪我们提交的 PR：读评审意见、判断有效性、修复并回复 |
-| **pr-rebase** | PR 与 main 冲突时做语义化重基（无冲突走纯脚本快速路） |
-| **pr-audit** | 反向角色：评审**别人的** PR（端到端实测后给出 LGTM / PROBLEMS / INCOMPLETE，LGTM 自动打标） |
-| **pr-ci** | CI 失败时自动定位并修复 |
-| **follow** | 纯脚本状态机：merged/closed 翻转、停滞催办、「可以合并」DM |
+| **issue** | Watches the Feishu group for new reports; screenshots are transcribed by a vision model, then the LLM reproduces/fixes/verifies in a one-shot container, delivers a PR and replies in the thread |
+| **feat** | Manual (`hfv feat -f spec.md`): implements a full feature from a spec and delivers a PR |
+| **pr-review** | Follows our submitted PRs: reads review comments, judges validity, fixes and replies |
+| **pr-rebase** | Semantically rebases conflicted PRs onto main (conflict-free branches go through a script-only fast path) |
+| **pr-audit** | The reverse role: reviews **other people's** PRs end-to-end and posts LGTM / PROBLEMS / INCOMPLETE (an LGTM auto-applies the gate label) |
+| **pr-ci** | Locates and fixes CI failures automatically |
+| **follow** | Script-only state machine: merged/closed flips, stalled-PR nudges, ready-to-merge DMs |
 
-支撑系统：任务级 playbook 自我进化（八宫效果引擎按「省迭代数」归位规则）、ClickHouse 指标、每任务一次性容器 + golden 镜像滚动固化（账号/登录态/模型配置随镜像层保留）。
+Supporting systems: a task-level playbook that improves itself (an
+eight-houses effect engine ranks lessons by iterations saved), ClickHouse
+metrics, and one throwaway container per task off a golden image that rolls
+forward on clean exit (accounts / login state / model config persist via the
+image layer).
 
-## 架构一句话
+## Architecture in one breath
 
-所有 LLM 运行都在容器里（golden 镜像 `hfv-task:latest`，每任务一次性实例，干净退出时 `docker commit` 滚动回写）；systemd 用户级 timer 驱动各线；每条线可独立扩缩容（`hfv scale <line> <n>`），per-instance 锁 + 取模分片保证互不踩踏。
+Every LLM run happens inside a container (golden image `hfv-task:latest`, one
+throwaway instance per task, `docker commit` rolls the golden forward on clean
+exit); systemd user timers drive the lines; every line scales independently
+(`hfv scale <line> <n>`) with per-instance locks and modulo candidate
+sharding so instances never step on each other.
 
-## 安装
+## Install
 
-前置：Linux（systemd 用户会话）、Docker、Node 22+、Python 3.11+、uv、Google Chrome、一个桌面会话（lark-mcp 的加密 token 存储依赖 D-Bus Secret Service）。
+Prerequisites: Linux with a systemd user session, Docker, Node 22+, Python
+3.11+, uv, Google Chrome, and a desktop session (lark-mcp's encrypted token
+store needs the D-Bus Secret Service).
 
 ```bash
 git clone <this-repo> ~/hands-free-vibe && cd ~/hands-free-vibe
 bash install.sh
 ```
 
-`install.sh` 会：检查系统依赖 → 安装 cline CLI → **从官方 npm registry 安装 MCP 工具**（`@larksuiteoapi/lark-mcp`、`chrome-devtools-mcp`，filesystem 走 npx）**并生成 wrapper**（固定桌面会话环境）→ 从模板生成站点配置 → 构建 `hfv-task:base` 镜像 → 安装 systemd units。幂等，可反复执行；`--check` 只检查不改动。
+`install.sh` checks system prerequisites → installs the cline CLI →
+**installs the MCP tools from the official npm registry**
+(`@larksuiteoapi/lark-mcp`, `chrome-devtools-mcp`; the filesystem server runs
+via npx) **and generates wrappers** that pin the desktop-session environment →
+creates the site configs from templates → builds the `hfv-task:base` image →
+installs the systemd units. Idempotent; `--check` verifies without changing
+anything.
 
-然后填入真实配置（全部 gitignored，永不入库）：
+Then fill in the real configuration (all gitignored, never committed):
 
-| 文件 | 内容 |
+| File | Contents |
 |---|---|
-| `hfv.conf` | 仓库路径、GitHub 身份、合并负责人等（模板 `hfv.conf.example`） |
-| `issues/config` | 飞书群与应用凭据、vision 转写用的 Kimi key（模板 `issues/config.example`） |
-| `model-keys.json` | LLM key 列表（quota 时自动轮换） |
+| `hfv.conf` | repo paths, GitHub identities, the merge owner, … (template: `hfv.conf.example`) |
+| `issues/config` | Feishu group + app credentials, the Kimi key for vision transcription (template: `issues/config.example`) |
+| `model-keys.json` | LLM key lists (rotated automatically on quota exhaustion) |
 
-golden 镜像首次引导：起一个一次性容器 → `ragflow-up.sh` 起栈 + 浏览器登录一次 → `docker commit <容器> hfv-task:latest`。
+First golden bootstrap: start one throwaway container → bring the stack up
+with `ragflow-up.sh` and log in once via the browser →
+`docker commit <container> hfv-task:latest`.
 
-## 日常使用
+## Daily use
 
 ```bash
-hfv on                    # 启用全部线（各 1 实例）
-hfv scale issue 2         # issue 线 2 路并行
-hfv ps                    # 任务视图：每条线每个实例在跑什么
-hfv log / hfv follow      # 看日志（默认第一个运行中的任务）
-hfv run [n]               # 立即触发一次 issue 运行
-hfv stop                  # 全停（含容器）
+hfv on                    # enable every line (1 instance each)
+hfv scale issue 2         # run 2 parallel issue instances
+hfv ps                    # task view: what every line instance is working on
+hfv log / hfv follow      # read logs (defaults to the first running task)
+hfv run [n]               # trigger an issue run right now
+hfv stop                  # stop everything (containers included)
 ```
 
-## 许可证
+## License
 
 [MIT](LICENSE)
