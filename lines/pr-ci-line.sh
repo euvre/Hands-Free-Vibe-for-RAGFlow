@@ -210,20 +210,30 @@ while IFS=$'\t' read -r num branch url mid fails scope; do
   CUR_PR="$num"; echo "$num" > "$CUR_FILE"
   if [[ "$scope" == external ]]; then
     # External PR (not ours): no branch write and no label rerun rights —
-    # classify and, for non-restartable failures, DM the author only (when
-    # Feishu-mappable). Restartable classes are skipped quietly: only the
-    # author can rerun.
+    # classify and, for non-restartable failures, leave a polite PR comment
+    # for the author (once per head sha). Restartable classes are skipped
+    # quietly: only the author can rerun.
     ext_dir="$(mktemp -d /tmp/ci-ext-XXXXXX)"
     fetch_failure_logs "$num" "$ext_dir"
     class="$(classify_failures "$ext_dir")"
     rm -rf "$ext_dir"
     if [[ "$class" == substantive ]]; then
-      text="PR #$num 的 CI 失败（非重启性：$fails），需要人工处理：$url"
-      author="$(gh pr view "$num" --repo "$GITHUB_REPO" --json author --jq .author.login 2>/dev/null || true)"
-      [[ -n "$author" && "$author" != "$MERGE_OWNER_LOGIN" ]] && python3 "$DIR/tools/feishu-dm.py" dm "$author" "$text" >>"$LOG_DIR/daemon.log" 2>&1 || true
-      log "pr=$num: external CI failure notified (author=$author)"
-      head_sha="$(gh pr view "$num" --repo "$GITHUB_REPO" --json headRefOid --jq .headRefOid 2>/dev/null || true)"
-      [[ -n "$head_sha" ]] && python3 "$DIR/lines/pr-ci-collect.py" stamp "$num" "$head_sha" notify >>"$LOG_DIR/daemon.log" 2>&1 || true
+      body="$(mktemp)"
+      { echo "Hi! Our CI watcher noticed the latest checks failed with what looks like a code-level issue (not a runner flake), so a plain re-run probably won't help:"
+        echo
+        printf -- '- `%s`
+' ${fails//,/ }
+        echo
+        echo "Could you take a look? (automated notice)"
+      } > "$body"
+      if gh pr comment "$num" --repo "$GITHUB_REPO" --body-file "$body" >>"$LOG_DIR/daemon.log" 2>&1; then
+        log "pr=$num: external CI failure commented on the PR"
+        head_sha="$(gh pr view "$num" --repo "$GITHUB_REPO" --json headRefOid --jq .headRefOid 2>/dev/null || true)"
+        [[ -n "$head_sha" ]] && python3 "$DIR/lines/pr-ci-collect.py" stamp "$num" "$head_sha" notify >>"$LOG_DIR/daemon.log" 2>&1 || true
+      else
+        log "pr=$num: external CI failure comment FAILED — left unstamped (retry next tick)"
+      fi
+      rm -f "$body"
     else
       log "pr=$num: external CI failure classified as $class (restartable) — author-side matter, skipped"
     fi
