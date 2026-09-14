@@ -219,12 +219,11 @@ while IFS=$'\t' read -r num branch url mid fails scope; do
     rm -rf "$ext_dir"
     if [[ "$class" == substantive ]]; then
       body="$(mktemp)"
-      { echo "Hi! Our CI watcher noticed the latest checks failed with what looks like a code-level issue (not a runner flake), so a plain re-run probably won't help:"
+      { echo "Hi! Our CI watcher noticed the latest checks on this PR are failing:"
         echo
-        printf -- '- `%s`
-' ${fails//,/ }
+        printf -- '- `%s`\n' ${fails//,/ }
         echo
-        echo "Could you take a look? (automated notice)"
+        echo "The failure logs do not look like a runner flake, so a plain re-run may not help. Could you take a look? (automated notice — sorry if this was already fixed by a newer push)"
       } > "$body"
       if gh pr comment "$num" --repo "$GITHUB_REPO" --body-file "$body" >>"$LOG_DIR/daemon.log" 2>&1; then
         log "pr=$num: external CI failure commented on the PR"
