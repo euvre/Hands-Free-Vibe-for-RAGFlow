@@ -133,7 +133,11 @@ if entries and owner.get("message_id", "") != mid:
 os.makedirs(deliver, exist_ok=True)
 tmp = owner_p + ".tmp"
 with open(tmp, "w") as f:
+    # worktree: the container's RAGFLOW_MAIN (= the per-task wt/ worktree on the
+    # host, same path via bind mount); post-deliver.sh commits THERE, not at the
+    # main root. Legacy host line: this is the main root itself — unchanged behavior.
     json.dump({"message_id": mid, "task_id": task_id or None,
+               "worktree": os.environ.get("RAGFLOW_MAIN") or None,
                "written_at": int(time.time() * 1000)}, f)
 os.replace(tmp, owner_p)
 PYEOF

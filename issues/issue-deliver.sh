@@ -15,7 +15,9 @@
 #   * PR create is idempotent: an existing PR for the head is reused
 #   * every step appends to logs/deliver.log
 #
-# Env overrides (for testing only): DELIVER_WORKDIR, DELIVER_REMOTE,
+# Env overrides: DELIVER_WORKDIR — post-deliver.sh passes the task's worktree
+# here (REQUIRED for container-era runs; delivering at the main root swept the
+# wt/ pool into PRs on 2026-09-14). For testing only: DELIVER_REMOTE,
 # DELIVER_PR_REPO, DELIVER_GH (path to a gh shim).
 set -euo pipefail
 HFV_DIR="$(cd "$(dirname "$0")/.." && pwd)"

@@ -58,6 +58,21 @@ if [[ "$OWNER_MID" != "$MID" ]]; then
   exit 0
 fi
 
+# --- worktree resolution: commit in the TASK's worktree, never the main root --
+# 2026-09-14: the host post group delivered at the main root, where add -A swept
+# wt/** into PRs #19553/#19554/#19581 and the real fix never landed. run-task.sh
+# stamps the in-container worktree into .owner.json; run-container.sh keeps that
+# worktree when a delivery is staged. The legacy host line stamps the main root
+# itself — DELIVER_WORKDIR then reproduces the old (host-correct) behavior.
+WORKTREE="$(python3 -c "import json;print(json.load(open('$DELIVER_DIR/.owner.json')).get('worktree') or '')" 2>/dev/null || true)"
+drop_worktree() {
+  # only ever drop wt/ pool worktrees — never the main clone root
+  case "$WORKTREE" in */wt/*) ;; *) return 0 ;; esac
+  [[ -d "$WORKTREE" ]] || return 0
+  git -C "$RAGFLOW_MAIN" worktree remove --force "$WORKTREE" >>"$LOG_DIR/daemon.log" 2>&1 || true
+  git -C "$RAGFLOW_MAIN" worktree prune >>"$LOG_DIR/daemon.log" 2>&1 || true
+}
+
 # Deliver files must all exist and be non-empty.
 BRANCH_FILE="$DELIVER_DIR/branch.txt"
 MSG_FILE="$DELIVER_DIR/commit-msg.txt"
@@ -67,10 +82,21 @@ BODY_FILE="$DELIVER_DIR/pr-body.md"
 for f in "$BRANCH_FILE" "$MSG_FILE" "$TITLE_FILE" "$BODY_FILE"; do
   if [[ ! -s "$f" ]]; then
     echo "post-deliver: missing or empty $f — main task did not complete delivery prep, skipped" >> "$LOG_DIR/daemon.log"
+    drop_worktree
     rm -f "$ISSUE_FILE"
     exit 0
   fi
 done
+
+# The delivery must commit the task worktree. An absent/invalid stamp means the
+# run predates the worktree-stamping fix or its worktree is gone — delivering at
+# the main root would ship garbage, so fail loudly instead.
+if [[ -z "$WORKTREE" || ! -d "$WORKTREE" || ! -e "$WORKTREE/.git" ]]; then
+  echo "post-deliver: no valid worktree in owner stamp ('$WORKTREE') — NOT delivering at the main root" >> "$LOG_DIR/daemon.log"
+  "$REPLY_SCRIPT" "$MID" "交付失败（自动消息）：任务 worktree 记录缺失或已回收，未交付。改动备份在 refs/backup/ 中，可手动恢复。" >> "$LOG_DIR/deliver.log" 2>&1 || true
+  rm -f "$ISSUE_FILE"
+  exit 0
+fi
 
 # Verification screenshots: the main task stages them into deliver/shots/ and
 # references them from pr-body.md as ![alt](shots/<name>). Upload to the fork's
@@ -87,12 +113,13 @@ TITLE="$(cat "$TITLE_FILE" | head -1)"
 
 echo "[$(date +%Y%m%d-%H%M%S)] post-deliver: creating PR branch=$BRANCH mid=$MID" >> "$LOG_DIR/daemon.log"
 
-PR_URL="$(bash "$DELIVER_SCRIPT" -b "$BRANCH" -m "$MSG_FILE" -t "$TITLE" -d "$BODY_FILE" -i "$MID" 2>>"$LOG_DIR/deliver.log")"
+PR_URL="$(DELIVER_WORKDIR="$WORKTREE" bash "$DELIVER_SCRIPT" -b "$BRANCH" -m "$MSG_FILE" -t "$TITLE" -d "$BODY_FILE" -i "$MID" 2>>"$LOG_DIR/deliver.log")"
 rc=$?
 
 if [[ $rc -ne 0 || -z "$PR_URL" ]]; then
   echo "[$(date +%Y%m%d-%H%M%S)] post-deliver: issue-deliver.sh failed rc=$rc — replying failure to thread" >> "$LOG_DIR/daemon.log"
-  "$REPLY_SCRIPT" "$MID" "交付失败（自动消息）：PR 创建过程出错，详见日志。代码改动已在本地备份，可手动恢复。" >> "$LOG_DIR/deliver.log" 2>&1 || true
+  "$REPLY_SCRIPT" "$MID" "交付失败（自动消息）：PR 创建过程出错，详见日志。代码改动已在本地备份（refs/backup/deliver-*，取自任务 worktree 的真实改动），可手动恢复。" >> "$LOG_DIR/deliver.log" 2>&1 || true
+  drop_worktree
   rm -f "$ISSUE_FILE"
   exit 0
 fi
@@ -124,6 +151,9 @@ if [[ -n "$TASK_ID" ]]; then
   cp -f "$BODY_FILE" "$TDIR/pr-body.md" 2>/dev/null || true
 fi
 
-# Clean up the deliver dir and current.json so the next run starts fresh.
+# Clean up the deliver dir, current.json and the task worktree (its state is
+# committed + pushed; the pre-commit backup ref keeps it recoverable) so the
+# next run starts fresh.
+drop_worktree
 rm -rf "$DELIVER_DIR"
 rm -f "$ISSUE_FILE"

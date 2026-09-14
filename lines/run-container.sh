@@ -31,6 +31,17 @@ fi
 # --- worktree: one detached worktree per task on the main clone -------------
 WT="$RAGFLOW_MAIN/wt/task-$TS${HFV_SLOT:+-s$HFV_SLOT}"
 git -C "$RAGFLOW_MAIN" fetch -q origin main >>"$LOG_DIR/daemon.log" 2>&1 || true
+# Reap dead task worktrees/husks older than 48h: killed tasks and crashed post
+# groups leak them (a live delivery is consumed by post-deliver within minutes,
+# so 48h is a generous margin). Root-owned cache files inside container-era
+# husks may refuse deletion — best-effort; they stay invisible to git via the
+# main clone's info/exclude.
+find "$RAGFLOW_MAIN/wt" -maxdepth 1 -mindepth 1 -name 'task-*' -mtime +2 2>/dev/null \
+  | while read -r d; do
+      git -C "$RAGFLOW_MAIN" worktree remove --force "$d" >>"$LOG_DIR/daemon.log" 2>&1 \
+        || { git -C "$RAGFLOW_MAIN" worktree prune; rm -rf "$d" 2>/dev/null || true; }
+      log "reaped stale worktree $d"
+    done
 git -C "$RAGFLOW_MAIN" worktree prune >>"$LOG_DIR/daemon.log" 2>&1 || true
 if ! git -C "$RAGFLOW_MAIN" worktree add --detach "$WT" origin/main >>"$LOG_DIR/daemon.log" 2>&1; then
   log "worktree add failed for $WT"
@@ -99,6 +110,15 @@ flock -u 9
 exec 9>&-
 
 docker rm "$CTR" >>"$LOG_DIR/daemon.log" 2>&1 || true
-git -C "$RAGFLOW_MAIN" worktree remove --force "$WT" >>"$LOG_DIR/daemon.log" 2>&1 || true
+# Issue-line delivery happens in ExecStartPost on the HOST (post-task →
+# post-deliver → issue-deliver.sh) but must commit the TASK worktree, not the
+# main root: when a delivery is staged, keep the worktree for post-deliver
+# (it removes it after the attempt). Anything else is reaped here as before.
+DELIVER_DIR="$HFV_DIR/deliver${HFV_SLOT:+-s$HFV_SLOT}"
+if [[ "$SCRIPT" == "run-task.sh" && -s "$DELIVER_DIR/branch.txt" ]]; then
+  log "delivery staged in $DELIVER_DIR — keeping worktree $WT for post-deliver"
+else
+  git -C "$RAGFLOW_MAIN" worktree remove --force "$WT" >>"$LOG_DIR/daemon.log" 2>&1 || true
+fi
 git -C "$RAGFLOW_MAIN" worktree prune >>"$LOG_DIR/daemon.log" 2>&1 || true
 exit "$rc"
