@@ -16,12 +16,12 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from hfv_source import is_gh
 
 DIR = os.path.dirname(os.path.abspath(__file__))
 STORE = os.path.join(DIR, "issues.jsonl")
 sys.path.insert(0, os.path.dirname(DIR))
 from hfv_config import load as _load_hfv  # noqa: E402
+from hfv_source import is_gh  # noqa: E402
 _HFV = _load_hfv()
 # Shared whole-store lock: pr-follow.py (PR line) writes the SAME file via
 # save_flips. Without a common lock, this process's load→(feishu/gh calls,
