@@ -89,10 +89,13 @@ def main():
     last = q("""SELECT run_id, kind, status, coalesce(error_kind,''), duration_ms
         FROM cline.runs ORDER BY ts_start DESC LIMIT 5""")
     print("latest runs:")
-    for line in last.splitlines():
-        rid, k, st, ek, d = line.split("\t")
-        flag = "" if st == "completed" else f" [{ek or 'unknown'}]"
-        print(f"  {rid}  {k:9s} {st}{flag}  {fmt_ms(int(d))}")
+    rows = [line.split("\t") for line in last.splitlines()]
+    if rows:
+        w_id = max(len(r[0]) for r in rows)
+        w_st = max(len(r[2]) + (0 if r[2] == "completed" else len(r[3] or "unknown") + 2) for r in rows)
+        for rid, k, st, ek, d in rows:
+            flag = "" if st == "completed" else f" [{ek or 'unknown'}]"
+            print(f"  {rid:{w_id}s}  {k:9s} {st + flag:{w_st}s}  {fmt_ms(int(d)):>7s}")
 
 
 if __name__ == "__main__":
