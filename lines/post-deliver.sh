@@ -58,12 +58,10 @@ if [[ "$OWNER_MID" != "$MID" ]]; then
   exit 0
 fi
 
-# --- worktree resolution: commit in the TASK's worktree, never the main root --
-# 2026-09-14: the host post group delivered at the main root, where add -A swept
-# wt/** into PRs #19553/#19554/#19581 and the real fix never landed. run-task.sh
-# stamps the in-container worktree into .owner.json; run-container.sh keeps that
-# worktree when a delivery is staged. The legacy host line stamps the main root
-# itself — DELIVER_WORKDIR then reproduces the old (host-correct) behavior.
+# --- worktree resolution: commit in the task's worktree, never the main root --
+# run-task.sh stamps the task's worktree into .owner.json; run-container.sh
+# keeps that worktree when a delivery is staged. The legacy host line stamps
+# the main root itself, which is where host-line edits live.
 WORKTREE="$(python3 -c "import json;print(json.load(open('$DELIVER_DIR/.owner.json')).get('worktree') or '')" 2>/dev/null || true)"
 drop_worktree() {
   # only ever drop wt/ pool worktrees — never the main clone root
@@ -88,9 +86,8 @@ for f in "$BRANCH_FILE" "$MSG_FILE" "$TITLE_FILE" "$BODY_FILE"; do
   fi
 done
 
-# The delivery must commit the task worktree. An absent/invalid stamp means the
-# run predates the worktree-stamping fix or its worktree is gone — delivering at
-# the main root would ship garbage, so fail loudly instead.
+# The delivery must commit the task worktree; without a valid stamp there is
+# nowhere safe to commit — refuse rather than fall back to the main root.
 if [[ -z "$WORKTREE" || ! -d "$WORKTREE" || ! -e "$WORKTREE/.git" ]]; then
   echo "post-deliver: no valid worktree in owner stamp ('$WORKTREE') — NOT delivering at the main root" >> "$LOG_DIR/daemon.log"
   "$REPLY_SCRIPT" "$MID" "交付失败（自动消息）：任务 worktree 记录缺失或已回收，未交付。改动备份在 refs/backup/ 中，可手动恢复。" >> "$LOG_DIR/deliver.log" 2>&1 || true
@@ -151,9 +148,8 @@ if [[ -n "$TASK_ID" ]]; then
   cp -f "$BODY_FILE" "$TDIR/pr-body.md" 2>/dev/null || true
 fi
 
-# Clean up the deliver dir, current.json and the task worktree (its state is
-# committed + pushed; the pre-commit backup ref keeps it recoverable) so the
-# next run starts fresh.
+# Clean up the deliver dir, current.json and the task worktree so the next run
+# starts fresh (the backup ref written before commit keeps the work recoverable).
 drop_worktree
 rm -rf "$DELIVER_DIR"
 rm -f "$ISSUE_FILE"

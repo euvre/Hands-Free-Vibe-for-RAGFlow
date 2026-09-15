@@ -43,9 +43,8 @@ PR_RE = re.compile(r"https?://github\.com/[^\s\"'<>]+/pull/\d+")
 # ---- GitHub issue source (source=github, message_id=gh-<number>) ----------
 GH_BIN = os.environ.get("GH_BIN", "gh")
 GH_REPO = cfg.get("GITHUB_ISSUE_REPO", "infiniflow/ragflow")
-# issues/config calls it GITHUB_LOGIN (hfv.conf calls it OWN_LOGIN) — accept both;
-# an empty value silently disabled gh done-detection (own-PR-comment never matched),
-# leaving delivered records open to be re-picked and re-delivered (2026-09-14 dup PRs).
+# issues/config calls it GITHUB_LOGIN, hfv.conf calls it OWN_LOGIN — accept both;
+# an empty value here silently disables gh done-detection (own-PR-comment never matches).
 OWN_LOGIN = cfg.get("OWN_LOGIN") or cfg.get("GITHUB_LOGIN", "")
 
 

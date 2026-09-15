@@ -16,9 +16,8 @@
 #   * every step appends to logs/deliver.log
 #
 # Env overrides: DELIVER_WORKDIR — post-deliver.sh passes the task's worktree
-# here (REQUIRED for container-era runs; delivering at the main root swept the
-# wt/ pool into PRs on 2026-09-14). For testing only: DELIVER_REMOTE,
-# DELIVER_PR_REPO, DELIVER_GH (path to a gh shim).
+# here (required). For testing only: DELIVER_REMOTE, DELIVER_PR_REPO,
+# DELIVER_GH (path to a gh shim).
 set -euo pipefail
 HFV_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 source "$HFV_DIR/config.sh"
@@ -58,11 +57,9 @@ log() { echo "[$TS] mid=${MID:-} $*" >> "$LOG"; }
 
 # --- 0) snapshot backup: index (incl. untracked after add -A) → tree → commit → ref
 git add -A
-# Hard guard (2026-09-14): the worktree pool lives under $RAGFLOW_MAIN/wt/ and
-# host-side delivery runs at the main root — a plain `git add -A` there sweeps
-# every sibling worktree into the commit (PRs #19553/#19554/#19581 shipped
-# 4.6k-file wt/** dumps). A delivery containing wt/ paths is ALWAYS garbage:
-# abort loudly instead of pushing a polluted branch.
+# Guard: the task-worktree pool lives under $RAGFLOW_MAIN/wt/, inside the repo —
+# a delivery staged at the wrong directory would sweep it into the commit.
+# A delivery containing wt/ paths is always garbage: abort, never push it.
 if git diff --cached --name-only | grep -q '^wt/'; then
   echo "deliver aborted: staged changes include wt/ worktree paths — the delivery is running at the repo root, not the task worktree" >&2
   log "FAILED guard: wt/ paths staged (worktree sweep) — delivery aborted"
@@ -96,11 +93,10 @@ else
   git checkout -qb "$BRANCH"
 fi
 if git diff --cached --quiet; then
-  # An empty staged set means the agent's edits never reached THIS workdir
-  # (e.g. host post group delivering at the main root while the task worked in
-  # a wt/ worktree). Pushing HEAD would ship an unrelated rolling tip — abort.
+  # An empty staged set means the task's edits never reached this workdir;
+  # pushing HEAD would ship an unrelated tip. Abort.
   echo "deliver aborted: nothing staged at $WORKDIR — the task's edits live in its worktree, not here" >&2
-  log "FAILED guard: empty staged set — refusing to push the bare rolling HEAD"
+  log "FAILED guard: empty staged set — refusing to push the bare HEAD"
   exit 1
 else
   git commit -q -F "$MSG"

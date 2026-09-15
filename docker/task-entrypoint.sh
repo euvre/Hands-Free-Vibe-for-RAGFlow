@@ -73,9 +73,9 @@ wait_for "clickhouse(host:8123)"        http_ok 8123
 echo "[task] stack ready; exec runner as inf: $*"
 # venv: the host's .venv is glibc-pinned to the host (its numpy was built
 # against GLIBC_2.43 and cannot load under this container's 2.39). Build the
-# container's own venv ONCE into /home/inf/venv-base (container layer — it
-# lives in the frozen golden image; only a manual golden rebuild ever
-# re-runs this), then link it into the
+# container's own venv ONCE into /home/inf/venv-base (it lives in the frozen
+# golden image; only a manual golden rebuild re-runs this), then link it into
+# the
 # mounted worktree so ragflow-up.sh's `source .venv/bin/activate` works
 # unchanged.
 if [[ ! -x /home/inf/venv-base/bin/python ]]; then

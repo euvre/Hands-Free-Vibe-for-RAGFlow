@@ -50,8 +50,8 @@ for line in open(os.path.join(base_dir, "config")):
 
 REPO = cfg.get("GITHUB_ISSUE_REPO", "infiniflow/ragflow")
 LABEL = cfg.get("GITHUB_ISSUE_LABEL", "🐞 bug")
-# accept both key names (see issue-sync.sh): empty OWN_LOGIN also disabled the
-# "we already commented there" re-record backstop.
+# accept both key names (see issue-sync.sh); an empty value disables the
+# "already commented by us" re-record backstop.
 OWN_LOGIN = cfg.get("OWN_LOGIN") or cfg.get("GITHUB_LOGIN", "")
 MAX_NEW = int(cfg.get("GITHUB_ISSUE_MAX", "3") or 3)
 WINDOW_MS = int(cfg.get("WINDOW_DAYS", "7") or 7) * 86400 * 1000
