@@ -283,11 +283,14 @@ while IFS=$'\t' read -r num sha url; do
   [[ -n "$sha" ]] || sha="$rsha"     # auto mode already knows the sha; manual learns it here
   [[ -n "$url" ]] || url="$rurl"
   # The LLM stage runs in one throwaway golden container (frozen base: model
-  # providers baked in, services in-container; nothing flows back). The
-  # container does its own pre-flight (env-up local) + unit-tier pre-run and
-  # injects the status section itself. HFV_SLOT namespaces its per-run files.
+  # providers baked in, services in-container; nothing flows back). --creds
+  # gives read access to GitHub (comment inventory); the publish prohibition
+  # stays a prompt-level rule exactly as it was on the host. The container does
+  # its own pre-flight (env-up local) + unit-tier pre-run and injects the
+  # status section itself. HFV_SLOT namespaces its per-run files.
   HFV_SLOT="pr-audit-$num" PR_TMPL="pr-audit-task.md" PR_TAG="audit" PR_NUM="$num" PR_BRANCH="$branch" PR_URL="$url" \
-    bash "$DIR/lines/run-container.sh" --wt "$wt" run-pr-main.sh
+  GH_TOKEN="$(gh auth token 2>/dev/null || true)" \
+    bash "$DIR/lines/run-container.sh" --wt "$wt" --creds run-pr-main.sh
   publish_verdict "$num" "$sha"
   collect_desc "$num"
   CUR_PR=""; rm -f "$CUR_FILE"
