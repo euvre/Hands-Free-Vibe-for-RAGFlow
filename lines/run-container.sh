@@ -19,15 +19,36 @@ GOLDEN="hfv-task:latest"
 
 log() { echo "[$(date +%Y%m%d-%H%M%S)] run-container: $*" >> "$LOG_DIR/daemon.log"; }
 
+# options:
+#   --wt <path>  reuse an existing line-managed worktree (no create/reap/remove
+#                here; the caller owns its lifecycle) — the PR lines' worktrees
+#   --creds      the LLM stage may push/comment: pass GH_TOKEN through, mount
+#                the real gh config ro, and shadow the minimal worker gitconfig
+#                with a GH_TOKEN-backed credential helper. Default containers
+#                stay credential-less.
+WT_OVERRIDE=""
+CREDS=0
+while [[ "${1:-}" == --* ]]; do
+  case "$1" in
+    --wt)    WT_OVERRIDE="${2:-}"; shift 2 ;;
+    --creds) CREDS=1; shift ;;
+    *) echo "usage: run-container.sh [--wt <worktree>] [--creds] <script.sh>" >&2; exit 1 ;;
+  esac
+done
 SCRIPT="${1:-}"
-[[ "$SCRIPT" =~ ^[a-z0-9-]+\.sh$ ]] || { echo "usage: run-container.sh <script.sh>" >&2; exit 1; }
+[[ "$SCRIPT" =~ ^[a-z0-9-]+\.sh$ ]] || { echo "usage: run-container.sh [--wt <worktree>] [--creds] <script.sh>" >&2; exit 1; }
+[[ "$CREDS" == 0 || -n "${GH_TOKEN:-}" ]] || { echo "--creds needs GH_TOKEN in env (host: gh auth token)" >&2; exit 1; }
 
 if [[ -z "$(docker images -q "$GOLDEN")" ]]; then
   log "golden image $GOLDEN missing — build it: docker build -f docker/Dockerfile.task -t hfv-task:base docker/, then bootstrap-commit once"
   exit 1
 fi
 
-# --- worktree: one detached worktree per task on the main clone -------------
+# --- worktree ---------------------------------------------------------------
+if [[ -n "$WT_OVERRIDE" ]]; then
+  WT="$WT_OVERRIDE"
+  [[ -d "$WT" ]] || { echo "worktree missing: $WT" >&2; exit 1; }
+else
 WT="$RAGFLOW_MAIN/wt/task-$TS${HFV_SLOT:+-s$HFV_SLOT}"
 git -C "$RAGFLOW_MAIN" fetch -q origin main >>"$LOG_DIR/daemon.log" 2>&1 || true
 # Reap task worktrees/husks older than 48h: a live delivery is consumed by
@@ -45,6 +66,7 @@ if ! git -C "$RAGFLOW_MAIN" worktree add --detach "$WT" origin/main >>"$LOG_DIR/
   log "worktree add failed for $WT"
   exit 1
 fi
+fi
 # the worktree's venv/node_modules resolve into the clone's copies
 for d in web/node_modules; do
   [[ -e "$RAGFLOW_MAIN/$d" && ! -e "$WT/$d" ]] && ln -s "$RAGFLOW_MAIN/$d" "$WT/$d" 2>/dev/null || true
@@ -61,8 +83,36 @@ if [[ -f "$RAGFLOW_MAIN/$TOKLIB" && ! -f "$WT/$TOKLIB" ]]; then
   mkdir -p "$WT/$(dirname "$TOKLIB")"
   cp "$RAGFLOW_MAIN/$TOKLIB" "$WT/$TOKLIB"
 fi
+# runtime assets not in git: deepdoc models + NLTK data. Symlink the clone's
+# copies into the worktree (the clone is mounted at the same path in-container,
+# so the links resolve there).
+for d in rag/res/deepdoc ragflow_deps/nltk_data; do
+  if [[ -e "$RAGFLOW_MAIN/$d" && ! -e "$WT/$d" ]]; then
+    mkdir -p "$WT/$(dirname "$d")"
+    ln -s "$RAGFLOW_MAIN/$d" "$WT/$d"
+  fi
+done
 
 log "starting $CTR (script=$SCRIPT wt=$WT)"
+
+# credential mode: GH_TOKEN comes from the caller's env (host `gh auth token`).
+# The generated gitconfig shadows the minimal worker one with a GH_TOKEN-backed
+# credential helper (the gh keyring does not exist in-container).
+CRED_ARGS=()
+GITCFG="$HFV_DIR/docker/gitconfig.worker"
+if [[ "$CREDS" == 1 ]]; then
+  CRED_GIT="$LOG_DIR/.gitconfig-creds-$TS"
+  cat "$GITCFG" > "$CRED_GIT"
+  printf '[credential "https://github.com"]\n\thelper = "!f() { echo username=oauth2; echo \"password=$GH_TOKEN\"; }; f"\n' >> "$CRED_GIT"
+  GITCFG="$CRED_GIT"
+  CRED_ARGS=(-e GH_TOKEN="$GH_TOKEN" -v "$HOME/.config/gh:/home/inf/.config/gh:ro")
+fi
+# PR-stage env passthrough (run-pr-main.sh reads these)
+ENV_ARGS=()
+for v in PR_TMPL PR_TAG PR_NUM PR_BRANCH PR_URL PR_MID PR_TIMEOUT PR_PREFLIGHT PR_PRE_SECTION; do
+  [[ -n "${!v:-}" ]] && ENV_ARGS+=(-e "$v=${!v}")
+done
+
 docker run \
   --name "$CTR" \
   --add-host host.docker.internal:host-gateway \
@@ -70,9 +120,10 @@ docker run \
   -e HFV_SLOT="${HFV_SLOT:-}" \
   -e RAGFLOW_MAIN="$WT" \
   -e TZ="$(cat /etc/timezone 2>/dev/null || echo Asia/Shanghai)" \
+  "${CRED_ARGS[@]}" "${ENV_ARGS[@]}" \
   -v "$HFV_DIR":"$HFV_DIR" \
   -v "$HOME/.cline/data/sessions":"$HOME/.cline/data/sessions" \
-  -v "$HFV_DIR/docker/gitconfig.worker":/home/inf/.gitconfig:ro \
+  -v "$GITCFG":/home/inf/.gitconfig:ro \
   -v "$RAGFLOW_MAIN":"$RAGFLOW_MAIN" \
   -v "$WT":"$WT" \
   -v "$CACHE/uv":/home/inf/.cache/uv \
@@ -95,7 +146,9 @@ docker rm "$CTR" >>"$LOG_DIR/daemon.log" 2>&1 || true
 # delivery is staged, keep the worktree for post-deliver (it removes it after
 # the attempt). Anything else is removed here.
 DELIVER_DIR="$HFV_DIR/deliver${HFV_SLOT:+-s$HFV_SLOT}"
-if [[ "$SCRIPT" == "run-task.sh" && -s "$DELIVER_DIR/branch.txt" ]]; then
+if [[ -n "$WT_OVERRIDE" ]]; then
+  : # line-managed worktree: the caller owns its lifecycle
+elif [[ "$SCRIPT" == "run-task.sh" && -s "$DELIVER_DIR/branch.txt" ]]; then
   log "delivery staged in $DELIVER_DIR — keeping worktree $WT for post-deliver"
 else
   git -C "$RAGFLOW_MAIN" worktree remove --force "$WT" >>"$LOG_DIR/daemon.log" 2>&1 || true

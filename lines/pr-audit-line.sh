@@ -35,12 +35,11 @@ if [[ -z "${HFV_EXEC_SNAPSHOT:-}" ]]; then
   exec bash "$HFV_EXEC_SNAPSHOT" "$@"
 fi
 CUR_PR=""
-# Per-PR e2e group, same as the review line: brought up before the audit and
-# downed on exit when this run was killed mid-audit (CUR_PR set); the normal
-# per-PR teardown happens at the end of each loop iteration.
+# Kill recovery: a line killed mid-stage (CUR_PR set) removes its status file
+# and stops the stage's golden container (its name carries the per-run suffix).
 # The CUR_FILE removal rides on CUR_PR: a lock-busy no-op exit (CUR_PR never
 # set) must not yank the ACTIVE line's status file.
-trap 'rm -f "$HFV_EXEC_SNAPSHOT"; if [[ -n "${CUR_PR:-}" && -n "${DIR:-}" ]]; then rm -f "$CUR_FILE"; bash "$DIR/framework/pr-e2e.sh" down "$CUR_PR" >>"${LOG_DIR:-/dev/null}" 2>&1 || true; fi' EXIT
+trap 'rm -f "$HFV_EXEC_SNAPSHOT"; if [[ -n "${CUR_PR:-}" && -n "${DIR:-}" ]]; then rm -f "$CUR_FILE"; docker rm -f $(docker ps -q --filter "name=-spr-audit-$CUR_PR") >>"${LOG_DIR:-/dev/null}" 2>&1 || true; fi' EXIT
 # Anchor to the daemon home, NOT dirname "$0": after the exec-guard re-exec
 # above, $0 IS the /tmp snapshot, so dirname resolves to /tmp.
 DIR="$HOME/hands-free-vibe"
@@ -283,24 +282,14 @@ while IFS=$'\t' read -r num sha url; do
   IFS=$'\t' read -r wt rsha branch rurl <<<"$pre"
   [[ -n "$sha" ]] || sha="$rsha"     # auto mode already knows the sha; manual learns it here
   [[ -n "$url" ]] || url="$rurl"
-  # Framework pre-flight: this PR's e2e group up + in-group app services to
-  # READY before the LLM starts. Best-effort — a failure only
-  # degrades the injected section; the task's INCOMPLETE path still applies.
-  ENV_STATUS_SECTION=""
-  bash "$DIR/framework/env-up.sh" e2e "$num" "$wt" >"$LOG_DIR/env-up-pr$num.log" 2>&1 || true
-  ENV_STATUS_SECTION="$(cat "$LOG_DIR/env-status-e2e-pr$num.md" 2>/dev/null || true)"
-  # Unit/static tier pre-run (the same build.sh --test / type-check / ruff
-  # calls every round)
-  tier_section="$(bash "$DIR/framework/pr-unit-tier.sh" "$wt" "origin/$PR_BASE" 2>/dev/null || true)"
-  [[ -n "$tier_section" ]] && ENV_STATUS_SECTION="$ENV_STATUS_SECTION
-
-$tier_section"
-  # < /dev/null on run_llm: keep cline from draining this loop's stdin;
-  # belt-and-braces with pr-llm-run.sh.
-  run_llm "$TMPL" 3600 "audit" "$wt" "$num" "$branch" "$url" "" < /dev/null
+  # The LLM stage runs in one throwaway golden container (frozen base: model
+  # providers baked in, services in-container; nothing flows back). The
+  # container does its own pre-flight (env-up local) + unit-tier pre-run and
+  # injects the status section itself. HFV_SLOT namespaces its per-run files.
+  HFV_SLOT="pr-audit-$num" PR_TMPL="pr-audit-task.md" PR_TAG="audit" PR_NUM="$num" PR_BRANCH="$branch" PR_URL="$url" \
+    bash "$DIR/lines/run-container.sh" --wt "$wt" run-pr-main.sh
   publish_verdict "$num" "$sha"
   collect_desc "$num"
-  bash "$DIR/framework/pr-e2e.sh" down "$num" >>"$LOG_DIR/daemon.log" 2>&1 || true
   CUR_PR=""; rm -f "$CUR_FILE"
   git -C "$CLONE" worktree remove --force "$wt" >>"$LOG_DIR/daemon.log" 2>&1 || true
   git -C "$CLONE" worktree prune >>"$LOG_DIR/daemon.log" 2>&1 || true

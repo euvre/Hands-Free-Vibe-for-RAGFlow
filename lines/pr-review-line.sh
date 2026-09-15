@@ -25,7 +25,9 @@ if [[ -z "${HFV_EXEC_SNAPSHOT:-}" ]]; then
   exec bash "$HFV_EXEC_SNAPSHOT" "$@"
 fi
 CUR_PR=""
-trap 'rm -f "$HFV_EXEC_SNAPSHOT" "${CUR_FILE:-}"; if [[ -n "${CUR_PR:-}" && -n "${DIR:-}" ]]; then bash "$DIR/framework/pr-e2e.sh" down "$CUR_PR" >>"${LOG_DIR:-/dev/null}" 2>&1 || true; fi' EXIT
+# Kill recovery: a line killed mid-stage (CUR_PR set) drops its status file and
+# stops the stage's golden container (its name carries the per-run suffix).
+trap 'rm -f "$HFV_EXEC_SNAPSHOT" "${CUR_FILE:-}"; if [[ -n "${CUR_PR:-}" && -n "${DIR:-}" ]]; then docker rm -f $(docker ps -q --filter "name=-spr-review-$CUR_PR") >>"${LOG_DIR:-/dev/null}" 2>&1 || true; fi' EXIT
 # Anchor to the daemon home, NOT dirname "$0": after the exec-guard re-exec
 # above, $0 IS the /tmp snapshot, so dirname resolves to /tmp.
 DIR="$HOME/hands-free-vibe"
@@ -65,10 +67,6 @@ else
   [[ -x "$CLINE_BIN" && -s "$TMPL" ]] || { log "cline CLI or template missing, skipping"; exit 0; }
   CANDS="$(python3 "$DIR/lines/pr-follow.py" collect review 2>>"$LOG_DIR/daemon.log")"
 fi
-# Hygiene sweep: purge leftover e2e groups whose PR reached a terminal state
-# (merged/closed) — their warm volumes would otherwise sit on disk forever.
-# Cheap (one docker volume ls + one gh call per leftover) and idempotent.
-bash "$DIR/framework/pr-e2e.sh" sweep >>"$LOG_DIR/daemon.log" 2>&1 || true
 [[ -z "$CANDS" ]] && exit 0
 # Model selection (incl. multi-key quota rotation) is owned by pr-llm-run.sh.
 source "$DIR/lines/pr-llm-run.sh"
@@ -146,20 +144,12 @@ while IFS=$'\t' read -r num branch url mid; do
   log "review target pr=$num branch=$branch"
   CUR_PR="$num"; echo "$num" > "$CUR_FILE"
   wt="$(prepare_worktree "$num" "$branch")" || continue
-  # Framework pre-flight: this PR's e2e group up + in-group app services to
-  # READY before the LLM starts (same rationale as the audit line). Best-effort.
-  ENV_STATUS_SECTION=""
-  bash "$DIR/framework/env-up.sh" e2e "$num" "$wt" >"$LOG_DIR/env-up-pr$num.log" 2>&1 || true
-  ENV_STATUS_SECTION="$(cat "$LOG_DIR/env-status-e2e-pr$num.md" 2>/dev/null || true)"
-  # Unit/static tier pre-run (same rationale as the audit line)
-  tier_section="$(bash "$DIR/framework/pr-unit-tier.sh" "$wt" "origin/$PR_BASE" 2>/dev/null || true)"
-  [[ -n "$tier_section" ]] && ENV_STATUS_SECTION="$ENV_STATUS_SECTION
-
-$tier_section"
-  # < /dev/null on run_llm: without it cline inherits this loop's stdin and
-  # drains the remaining lines of <<<"$CANDS" — the loop then degenerates to
-  # ONE PR per tick. Belt-and-braces with the redirect inside pr-llm-run.sh.
-  run_llm "$TMPL" 3600 "review" "$wt" "$num" "$branch" "$url" "$mid" < /dev/null
+  # The LLM stage runs in one throwaway golden container off the frozen base
+  # (model providers baked in, services in-container). --creds: this line's
+  # agent pushes the fix and comments on the PR itself (its whitelist allows).
+  HFV_SLOT="pr-review-$num" PR_TMPL="pr-review-task.md" PR_TAG="review" PR_NUM="$num" PR_BRANCH="$branch" PR_URL="$url" PR_MID="$mid" \
+  GH_TOKEN="$(gh auth token 2>/dev/null || true)" \
+    bash "$DIR/lines/run-container.sh" --wt "$wt" --creds run-pr-main.sh
   rc=$?
   [[ -n "$mid" ]] && python3 "$DIR/lines/pr-follow.py" stamp "$mid" comment_check_at >>"$LOG_DIR/daemon.log" 2>&1 || true
   # pr_flag state machine: a successfully processed candidate means a HUMAN
@@ -168,10 +158,6 @@ $tier_section"
   if [[ $rc -eq 0 || $rc -eq 124 ]] && [[ -n "$mid" ]]; then
     python3 "$DIR/lines/pr-follow.py" mark-done "$mid" "$num" "$branch" >>"$LOG_DIR/daemon.log" 2>&1 || true
   fi
-  # e2e group safety net: an agent that crashed mid-verification must not
-  # leak a service stack (an idled ES group holds RAM); no-op when no group
-  # was started for this PR
-  bash "$DIR/framework/pr-e2e.sh" down "$num" >>"$LOG_DIR/daemon.log" 2>&1 || true
   CUR_PR=""; rm -f "$CUR_FILE"
   notify_reviewers "$num"
   release_worktree "$num"

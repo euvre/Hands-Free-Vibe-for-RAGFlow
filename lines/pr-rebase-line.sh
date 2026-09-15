@@ -22,7 +22,9 @@ if [[ -z "${HFV_EXEC_SNAPSHOT:-}" ]]; then
   exec bash "$HFV_EXEC_SNAPSHOT" "$@"
 fi
 CUR_PR=""
-trap 'rm -f "$HFV_EXEC_SNAPSHOT" "${CUR_FILE:-}"; if [[ -n "${CUR_PR:-}" && -n "${DIR:-}" ]]; then bash "$DIR/framework/pr-e2e.sh" down "$CUR_PR" >>"${LOG_DIR:-/dev/null}" 2>&1 || true; fi' EXIT
+# Kill recovery: a line killed mid-stage (CUR_PR set) drops its status file and
+# stops the stage's golden container (its name carries the per-run suffix).
+trap 'rm -f "$HFV_EXEC_SNAPSHOT" "${CUR_FILE:-}"; if [[ -n "${CUR_PR:-}" && -n "${DIR:-}" ]]; then docker rm -f $(docker ps -q --filter "name=-spr-rebase-$CUR_PR") >>"${LOG_DIR:-/dev/null}" 2>&1 || true; fi' EXIT
 # Anchor to the daemon home, NOT dirname "$0": after the exec-guard re-exec
 # above, $0 IS the /tmp snapshot, so dirname resolves to /tmp.
 # Same convention as run-task.sh.
@@ -135,11 +137,15 @@ while IFS=$'\t' read -r num branch url mid; do
     n=$((n + 1))
     continue
   fi
-  ENV_STATUS_SECTION="$auto_out"
-  # < /dev/null on run_llm: without it cline inherits this loop's stdin and
-  # drains the remaining lines of <<<"$CANDS" — the loop then degenerates to
-  # ONE PR per tick. Belt-and-braces with the redirect inside pr-llm-run.sh.
-  run_llm "$TMPL" 1800 "rebase" "$wt" "$num" "$branch" "$url" "$mid" < /dev/null
+  # The LLM stage runs in one throwaway golden container (frozen base).
+  # --creds: the agent force-with-lease pushes the rebased branch itself.
+  # No framework pre-flight (parity with the old host stage; the agent may
+  # still launch services itself inside its own container). PR_PRE_SECTION
+  # carries the auto-rebase handover into the prompt.
+  HFV_SLOT="pr-rebase-$num" PR_TMPL="pr-rebase-task.md" PR_TAG="rebase" PR_NUM="$num" PR_BRANCH="$branch" PR_URL="$url" PR_MID="$mid" \
+  PR_TIMEOUT=1800 PR_PREFLIGHT=0 PR_PRE_SECTION="$auto_out" \
+  GH_TOKEN="$(gh auth token 2>/dev/null || true)" \
+    bash "$DIR/lines/run-container.sh" --wt "$wt" --creds run-pr-main.sh
   rc=$?
   # stamps regardless of outcome: cooldown holds even on failure
   [[ -n "$mid" ]] && python3 "$DIR/lines/pr-follow.py" stamp "$mid" rebase_fix_at >>"$LOG_DIR/daemon.log" 2>&1 || true
@@ -148,10 +154,6 @@ while IFS=$'\t' read -r num branch url mid; do
   if [[ $rc -eq 0 || $rc -eq 124 ]] && [[ -n "$mid" ]]; then
     python3 "$DIR/lines/pr-follow.py" report-if-ready "$mid" "$num" "$branch" >>"$LOG_DIR/daemon.log" 2>&1 || true
   fi
-  # e2e group safety net: an agent that crashed mid-verification must not
-  # leak a service stack (an idled ES group holds RAM); no-op when no group
-  # was started for this PR
-  bash "$DIR/framework/pr-e2e.sh" down "$num" >>"$LOG_DIR/daemon.log" 2>&1 || true
   CUR_PR=""; rm -f "$CUR_FILE"
   release_worktree "$num"
   n=$((n + 1))

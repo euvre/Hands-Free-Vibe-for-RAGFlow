@@ -22,7 +22,9 @@ if [[ -z "${HFV_EXEC_SNAPSHOT:-}" ]]; then
   exec bash "$HFV_EXEC_SNAPSHOT" "$@"
 fi
 CUR_PR=""
-trap 'rm -f "$HFV_EXEC_SNAPSHOT" "${CUR_FILE:-}"; if [[ -n "${CUR_PR:-}" && -n "${DIR:-}" ]]; then bash "$DIR/framework/pr-e2e.sh" down "$CUR_PR" >>"${LOG_DIR:-/dev/null}" 2>&1 || true; fi' EXIT
+# Kill recovery: a line killed mid-stage (CUR_PR set) drops its status file and
+# stops the stage's golden container (its name carries the per-run suffix).
+trap 'rm -f "$HFV_EXEC_SNAPSHOT" "${CUR_FILE:-}"; if [[ -n "${CUR_PR:-}" && -n "${DIR:-}" ]]; then docker rm -f $(docker ps -q --filter "name=-spr-ci-$CUR_PR") >>"${LOG_DIR:-/dev/null}" 2>&1 || true; fi' EXIT
 # Anchor to the daemon home, NOT dirname "$0": after the exec-guard re-exec
 # above, $0 IS the /tmp snapshot, so dirname resolves to /tmp.
 DIR="$HOME/hands-free-vibe"
@@ -64,10 +66,6 @@ else
   [[ -d "$CLONE/.git" ]] || { log "ci clone $CLONE missing, skipping"; exit 0; }
   CANDS="$(python3 "$DIR/lines/pr-ci-collect.py" collect 2>>"$LOG_DIR/daemon.log")"
 fi
-# Hygiene sweep: purge leftover e2e groups whose PR reached a terminal state
-# (merged/closed) — their warm volumes would otherwise sit on disk forever.
-# Cheap (one docker volume ls + one gh call per leftover) and idempotent.
-bash "$DIR/framework/pr-e2e.sh" sweep >>"$LOG_DIR/daemon.log" 2>&1 || true
 [[ -z "$CANDS" ]] && exit 0
 # Model selection (incl. multi-key quota rotation) is owned by pr-llm-run.sh.
 source "$DIR/lines/pr-llm-run.sh"
@@ -301,18 +299,20 @@ while IFS=$'\t' read -r num branch url mid fails scope; do
     continue
   fi
   # __CI_FAILS__ is this line's own placeholder (unknown to run_llm's sed
-  # list) — pre-substitute into a per-run copy of the template.
-  TMPL_CI="$(mktemp /tmp/pr-ci-task.XXXXXX.md)"
+  # list) — pre-substitute into a per-run copy under tmp/ (the HFV_DIR mount
+  # makes it visible inside the container; /tmp is not shared).
+  TMPL_CI="$DIR/tmp/pr-ci-task-$num-$(date +%s).md"
   sed -e "s|__CI_FAILS__|$fails|g" "$TMPL" > "$TMPL_CI"
-  # < /dev/null on run_llm: without it cline inherits this loop's stdin and
-  # drains the remaining lines of <<<"$CANDS" (see pr-rebase-line.sh).
-  run_llm "$TMPL_CI" 1800 "ci" "$wt" "$num" "$branch" "$url" "$mid" < /dev/null
+  # The LLM stage runs in one throwaway golden container. --creds: the agent
+  # plain-pushes the fix to the fork branch itself (its whitelist allows).
+  HFV_SLOT="pr-ci-$num" PR_TMPL="$TMPL_CI" PR_TAG="ci" PR_NUM="$num" PR_BRANCH="$branch" PR_URL="$url" PR_MID="$mid" \
+  PR_TIMEOUT=1800 PR_PREFLIGHT=0 \
+  GH_TOKEN="$(gh auth token 2>/dev/null || true)" \
+    bash "$DIR/lines/run-container.sh" --wt "$wt" --creds run-pr-main.sh
   rc=$?
   rm -f "$TMPL_CI"
   # stamps regardless of outcome: cooldown/budget hold even on failure
   [[ -n "$head_sha" ]] && python3 "$DIR/lines/pr-ci-collect.py" stamp "$num" "$head_sha" llm >>"$LOG_DIR/daemon.log" 2>&1 || true
-  # e2e group safety net (no-op when the LLM never started one for this PR)
-  bash "$DIR/framework/pr-e2e.sh" down "$num" >>"$LOG_DIR/daemon.log" 2>&1 || true
   CUR_PR=""; rm -f "$CUR_FILE"
   release_worktree "$num"
   n=$((n + 1))
