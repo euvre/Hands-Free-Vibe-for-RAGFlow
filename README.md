@@ -25,14 +25,19 @@ hands-free-vibe (hfv) is an unattended maintenance robot for one open-source rep
 
 **It learns.** Every task writes lessons into a rolling playbook. An effect engine ranks lessons by outcome rather than hit rate: how many iterations later tasks of the same kind saved after a lesson appeared. The useful ones float up, the stale ones sink and get purged.
 
-## Why it's built this way
+## Why hfv
 
-- **Verification is real.** The app actually runs, a browser actually clicks. "Fixed" is decided by what the run shows, not by whether the diff looks right.
-- **Credentials stay on the host.** Task containers carry no GitHub token and no Feishu credentials, and the agent cannot run git at all. The only thing that could leak is a handful of host-side scripts.
-- **No lost or duplicate GitHub writes.** Every write — creating a PR, commenting, flipping labels, even a push — lands in an on-disk outbox first and is executed with retries and dependency chaining (a "fixed" reply only posts once its push has actually landed). PR creation is idempotent, so a retry never opens a second PR.
-- **Failures stop at hard guards.** Pushes are pool-worktrees-only, fork-remote-only, never the base branch. Every task has a hard time cap. The system refuses rather than improvises.
-- **Parallelism is one command.** Every line scales on its own (`hfv scale <line> <n>`) with per-instance locks and modulo sharding; instances never step on each other.
-- **Lessons retire on data.** Playbook entries are ranked by real iteration counts from ClickHouse — not by hit rate, and not by feel.
+Same job — one bug from report to merge — three ways of doing it:
+
+| | Pure manual | Semi-manual + vibe coding | Hands Free Vibe |
+|---|---|---|---|
+| Verification | ❌ Repro and regression are each person's call; there is no enforced verification step | ❌ The agent only has the code; with no ready-made stack or browser, "verified" stops at "it compiles", sometimes at "looks right" | ✅ Every task boots the full stack from the golden image: browser repro, tiered tests, re-verified after the fix — decided by what the run shows |
+| Credential boundary | ❌ Every credential sits on one dev machine; the leak surface is the whole work environment | ❌ The agent shares that environment with git/gh tokens at its fingertips; one hallucinated command pushes to the wrong place | ✅ Task containers carry zero credentials, the agent has no git access, every write goes through host-side guarded scripts |
+| GitHub writes | ❌ No queue, no retry, no idempotency; a missed send or reply has no backstop | ❌ The agent calls gh directly; a failed call is lost, a retried one can double-post or open a second PR | ✅ Every write lands in an on-disk outbox first and runs with retries and dependency chains; PR creation is idempotent |
+| Failure boundaries | ❌ No guards; a mis-operation lands directly on the repo | ❌ No guardrails — the damage scales linearly with the permissions handed over | ✅ Hard guards refuse outright: pushes are pool-worktrees-only, fork-only, never the base branch |
+| Parallelism | ❌ One bug at a time | ❌ Extra windows share one environment; ports, branches, and login states collide | ✅ `hfv scale <line> <n>`; per-instance locks and modulo sharding, instances never step on each other |
+| Experience | ❌ Lives only in people's heads; the process itself retains and passes on nothing | ❌ The session ends and the lesson is gone; the same pit gets fallen into again | ✅ Lessons go into a rolling playbook, ranked by iterations actually saved, dead ones purged |
+| … | … | … | … |
 
 ## Architecture
 
