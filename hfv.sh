@@ -86,6 +86,9 @@ PR line (manual single-shot; auto passes run on the pr timers):
                                then reply on the PR (LGTM when clean); the
                                auto line also picks up PRs review-requested to us
   hfv pr audit log            last 40 lines of the latest audit-stage log
+  HFV_AUDIT_DRY_RUN=1 hfv pr audit <pr-num>
+                              dry-run: full audit incl. the Chinese operator
+                               note, but nothing published/stamped/DM'd
   hfv pr audit follow         tail -f the latest audit-stage log
   hfv pr audit up <worktree>  bring the on-demand audit cluster (hfv-svc-audit)
                                up against a worktree (worker mount is swapped;

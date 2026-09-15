@@ -222,6 +222,13 @@ dm_notify() { # <num> <verdict> — DM the PR author (if Feishu-mappable) + the 
 
 publish_verdict() { # <num> <sha>
   local num="$1" sha="$2" vf="$AUDIT_ROOT/pr-$num/verdict.md" verdict body_file
+  # Dry-run (HFV_AUDIT_DRY_RUN=1, manual testing): the verdict and the operator
+  # note still land in the audit dir, but nothing is published, labeled,
+  # stamped or DM'd — the PR stays eligible for a real round.
+  if [[ -n "${HFV_AUDIT_DRY_RUN:-}" ]]; then
+    log "pr=$num: dry-run — nothing published (verdict line: $(head -n1 "$vf" 2>/dev/null || echo '<no verdict file>'))"
+    return
+  fi
   if [[ ! -s "$vf" ]]; then
     log "pr=$num: no verdict file — nothing published, stamped no-verdict"
     python3 "$DIR/lines/pr-audit.py" stamp "$num" "$sha" no-verdict >>"$LOG_DIR/daemon.log" 2>&1 || true
