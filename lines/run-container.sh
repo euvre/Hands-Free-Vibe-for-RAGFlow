@@ -67,6 +67,11 @@ if ! git -C "$RAGFLOW_MAIN" worktree add --detach "$WT" origin/main >>"$LOG_DIR/
   exit 1
 fi
 fi
+# Idle per-PR e2e groups: env-up e2e mode is manual-only now, but any group
+# that does get brought up must not sit for hours — reap when idle (no live
+# stage container) beyond the TTL. Runs on every task/stage launch (both the
+# issue path above and the PR-line --wt path land here).
+bash "$HFV_DIR/framework/pr-e2e.sh" reap >>"$LOG_DIR/daemon.log" 2>&1 || true
 # the worktree's venv/node_modules resolve into the clone's copies
 for d in web/node_modules; do
   [[ -e "$RAGFLOW_MAIN/$d" && ! -e "$WT/$d" ]] && ln -s "$RAGFLOW_MAIN/$d" "$WT/$d" 2>/dev/null || true

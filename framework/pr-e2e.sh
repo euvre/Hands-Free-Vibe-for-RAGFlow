@@ -55,7 +55,8 @@ die() { echo "pr-e2e: $*" >&2; exit 1; }
 usage() {
   cat >&2 <<'USG'
 usage: pr-e2e.sh up <num|audit> <worktree> | exec <num|audit> -- <cmd...> |
-                 ports <num|audit> | status <num|audit> | down <num|audit> | purge <num|audit>
+                 ports <num|audit> | status <num|audit> | down <num|audit> | purge <num|audit> |
+                 reap | sweep
 
 A numeric argument gives a throwaway per-PR cluster (hfv-svc-pr<N>).
 Any other name is a named group (own namespace, volumes persist across runs).
@@ -220,6 +221,30 @@ do_purge() {
   echo "pr-e2e: group $SUFFIX purged"
 }
 
+do_reap() { # down groups that are up but IDLE: no live line-stage container
+  # (-spr-<line>-<num>) for the PR, and the worker has been up beyond the TTL.
+  # env-up's e2e mode brings a group up on demand; nothing may park one for
+  # hours between rounds — that is the opposite of spin-up-on-demand.
+  # `down` (not purge): volumes stay warm so a same-PR follow-up round restarts
+  # fast; terminal-state PRs are handled by `sweep`.
+  local c num started age now
+  now=$(date +%s)
+  for c in $(docker ps --format '{{.Names}}' --filter 'name=^hfv-e2e-pr' 2>/dev/null); do
+    num="${c#hfv-e2e-pr}"
+    [[ "$num" =~ ^[0-9]+$ ]] || continue
+    docker ps --format '{{.Names}}' 2>/dev/null \
+      | grep -qE -- "-spr-(audit|review|rebase|ci)-$num\$" && continue
+    started="$(docker inspect -f '{{.State.StartedAt}}' "$c" 2>/dev/null)" || continue
+    [[ -n "$started" ]] || continue
+    age=$(( now - $(date -d "$started" +%s 2>/dev/null || echo "$now") ))
+    if (( age > 3600 )); then
+      names "$num"
+      log "reaping idle e2e group pr$num (worker age ${age}s, no live stage)"
+      do_down
+    fi
+  done
+}
+
 do_sweep() { # purge per-PR groups whose PR is no longer OPEN (merged/closed).
   # `down` keeps volumes warm for the NEXT round — but for a terminal-state
   # PR that round never comes, so the esdata/mysql/... volumes and the e2e
@@ -250,6 +275,8 @@ case "$cmd" in
     names "$num"; "do_$cmd" ;;
   sweep)
     do_sweep ;;
+  reap)
+    do_reap ;;
   *)
     usage; exit 2 ;;
 esac
