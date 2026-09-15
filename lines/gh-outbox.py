@@ -9,10 +9,16 @@ then need no gh binary and no GH_TOKEN for API writes (git push still uses
 the credential helper).
 
 usage:
-  gh-outbox.py comment   --pr N --body-file F
+  gh-outbox.py comment   --pr N --body-file F [--after <record-id>]
   gh-outbox.py label     --pr N [--add L] [--remove L]     (both = retrip)
-  gh-outbox.py pr-create --branch B --title T --body-file F --mid M
+  gh-outbox.py pr-create --branch B --title T --body-file F (--mid M | --dm-owner)
                          [--task-id T] [--reviewers u1,u2]
+  gh-outbox.py push      --worktree WT --branch B [--remote R] [--force-with-lease]
+
+--after chains records: the dependent executes only once the referenced
+record is done (comment after push: the reply publishes only when the commits
+are actually on the fork). A failed dependency cascades the dependent to
+failed/ instead.
 
 Each command prints the outbox id on stdout and exits 0 once the record is
 durably queued (atomic tmp+rename). A nonzero exit means the action was NOT
@@ -63,6 +69,8 @@ def main():
     c = sub.add_parser("comment", help="post one PR comment")
     c.add_argument("--pr", type=int, required=True)
     c.add_argument("--body-file", required=True)
+    c.add_argument("--after", default="",
+                   help="only post once this record id is done (e.g. a push)")
 
     l = sub.add_parser("label", help="add/remove a PR label (both = retrip)")
     l.add_argument("--pr", type=int, required=True)
@@ -81,6 +89,12 @@ def main():
     p.add_argument("--reviewers", default="",
                    help="comma-separated reviewer logins (merge owner first)")
 
+    g = sub.add_parser("push", help="push HEAD of a line worktree to the fork")
+    g.add_argument("--worktree", required=True)
+    g.add_argument("--branch", required=True)
+    g.add_argument("--remote", default="", help="default: the configured fork")
+    g.add_argument("--force-with-lease", action="store_true")
+
     a = ap.parse_args()
     if a.kind == "label" and not (a.add or a.remove):
         ap.error("label needs --add and/or --remove")
@@ -89,9 +103,12 @@ def main():
 
     rec = {"kind": a.kind.replace("-", "_")}
     if a.kind == "comment":
-        rec.update(pr=a.pr, body=open(a.body_file).read())
+        rec.update(pr=a.pr, body=open(a.body_file).read(), after=a.after)
     elif a.kind == "label":
         rec.update(pr=a.pr, add=a.add, remove=a.remove)
+    elif a.kind == "push":
+        rec.update(worktree=a.worktree, branch=a.branch, remote=a.remote,
+                   force_with_lease=bool(a.force_with_lease))
     else:
         rec.update(branch=a.branch, title=a.title,
                    body=open(a.body_file).read(), mid=a.mid,

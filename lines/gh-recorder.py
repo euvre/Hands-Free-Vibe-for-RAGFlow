@@ -66,6 +66,7 @@ REPLY = os.path.join(ISSUES, "issue-reply.py")
 LOCK = os.path.join(LINES, ".gh-recorder.lock")
 
 GH = os.environ.get("GH_BIN", "gh")
+REPO_MAIN = _HFV["RAGFLOW_MAIN"]
 DRY_RUN = os.environ.get("GH_RECORDER_DRY_RUN") == "1"
 MAX_ATTEMPTS = 5
 DONE_RETENTION_S = 7 * 86400    # outbox done/ retention
@@ -211,12 +212,58 @@ def _do_pr_create(rec):
     return True
 
 
+def _is_pool_worktree(wt):
+    """Push sources are restricted to line-managed pool worktrees of the main
+    clone — never the main root, never an arbitrary path (a prompt-injected
+    agent could otherwise enqueue a push of the host's main checkout)."""
+    if not wt or not os.path.isdir(wt):
+        return False
+    real = os.path.realpath(wt)
+    pool = os.path.realpath(os.path.join(REPO_MAIN, "wt")) + os.sep
+    if not real.startswith(pool):
+        return False
+    return subprocess.run(["git", "-C", real, "rev-parse", "--git-dir"],
+                          capture_output=True).returncode == 0
+
+
+def _do_push(rec):
+    """Returns True=pushed, False=retryable failure, None=terminal (guard
+    violation — straight to failed/, no retry)."""
+    wt, branch = rec.get("worktree", ""), rec.get("branch", "")
+    remote = rec.get("remote") or FORK_REMOTE
+    if not _is_pool_worktree(wt):
+        log("push %s: worktree %r is not a pool worktree — refused" % (rec["id"], wt))
+        return None
+    if remote != FORK_REMOTE and remote != os.environ.get("GH_RECORDER_TEST_REMOTE", "\x00"):
+        log("push %s: remote %r refused (fork only, never origin)" % (rec["id"], remote))
+        return None
+    if not re.match(r"^[a-zA-Z0-9][a-zA-Z0-9._/-]*$", branch) or branch == PR_BASE:
+        log("push %s: branch %r refused" % (rec["id"], branch))
+        return None
+    cmd = ["git", "-C", wt, "push"]
+    if rec.get("force_with_lease"):
+        # plain lease: the worktree's remote-tracking ref is the expectation —
+        # the same ref the in-container push would have used
+        cmd.append("--force-with-lease")
+    cmd += [remote, "HEAD:refs/heads/" + branch]
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    except Exception as e:
+        log("push %s: %s" % (rec["id"], e))
+        return False
+    if p.returncode != 0:
+        log("push %s: rc=%d %s" % (rec["id"], p.returncode, (p.stderr or "")[-300:]))
+        return False
+    log("push %s: %s HEAD -> %s/%s done" % (rec["id"], wt, remote, branch))
+    return True
+
+
 def drain_outbox():
     pend = os.path.join(OUTBOX, "pending")
     if not os.path.isdir(pend):
         return
     handlers = {"comment": _do_comment, "label": _do_label,
-                "pr_create": _do_pr_create}
+                "pr_create": _do_pr_create, "push": _do_push}
     for path in sorted(glob.glob(os.path.join(pend, "*.json"))):
         try:
             rec = json.load(open(path))
@@ -230,6 +277,20 @@ def drain_outbox():
             os.rename(path, os.path.join(OUTBOX, "failed", os.path.basename(path)))
             log("outbox %s: unknown kind — dropped" % rec.get("id"))
             continue
+        # dependency: --after <id> — run only once the referenced record is
+        # done; a failed dependency cascades the dependent to failed/
+        dep = rec.get("after") or ""
+        if dep:
+            if os.path.exists(os.path.join(OUTBOX, "done", dep + ".json")):
+                pass
+            elif os.path.exists(os.path.join(OUTBOX, "failed", dep + ".json")):
+                os.makedirs(os.path.join(OUTBOX, "failed"), exist_ok=True)
+                os.rename(path, os.path.join(OUTBOX, "failed", os.path.basename(path)))
+                log("outbox %s: %s dropped — dependency %s failed"
+                    % (rec.get("id"), kind, dep))
+                continue
+            else:
+                continue  # dependency still pending — next pass
         if DRY_RUN:
             log("outbox %s: DRY-RUN would execute %s" % (rec.get("id"), kind))
             continue
@@ -238,7 +299,12 @@ def drain_outbox():
             ok = handler(rec)
         except Exception as e:
             log("outbox %s: handler error: %s" % (rec.get("id"), e))
-        if ok:
+        if ok is None:
+            # terminal (guard violation): no retry
+            os.makedirs(os.path.join(OUTBOX, "failed"), exist_ok=True)
+            os.rename(path, os.path.join(OUTBOX, "failed", os.path.basename(path)))
+            log("outbox %s: %s refused by guard — failed/" % (rec.get("id"), kind))
+        elif ok:
             os.makedirs(os.path.join(OUTBOX, "done"), exist_ok=True)
             os.rename(path, os.path.join(OUTBOX, "done", os.path.basename(path)))
             log("outbox %s: %s done" % (rec.get("id"), kind))
@@ -251,6 +317,10 @@ def drain_outbox():
                     % (rec.get("id"), kind, rec["attempts"]))
                 if kind == "pr_create":
                     _fail_reply(rec)
+                elif kind == "push":
+                    _dm_owner("push 多次失败：worktree %s 的分支 %s 未能推送到 fork"
+                              "（详见 gh-recorder 日志）；对应 PR 回复不会发出。"
+                              % (rec.get("worktree", "?"), rec.get("branch", "?")))
             else:
                 rec["not_before"] = now_ms() + (2 ** rec["attempts"]) * 60 * 1000
                 with open(path, "w") as f:
