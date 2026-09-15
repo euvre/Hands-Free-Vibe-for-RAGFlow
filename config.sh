@@ -55,8 +55,9 @@ unset _RAGFLOW_MAIN_ENV
 
 # ---- 任务容器（随起随用）----
 # 每个任务从 golden 镜像 hfv-task:latest 起一个一次性容器
-# （lines/run-container.sh），干净退出时 docker commit 回滚 golden——账号、
-# default model、数据集、chrome 登录态全部经镜像层保留。
+# （lines/run-container.sh）。golden 是冻结的并行基底：容器纯弃置，
+# 不做 docker commit 回写（2026-09-14 起）；账号/数据集/chrome 登录态
+# 冻结在镜像里，更新世界须走 install.sh 的人工 bootstrap-commit。
 # HFV_SLOT 由 systemd 模板实例传入（cline-feishu-triage@<n>，并经
 # run-container.sh 继承进容器），驱动 per-instance 的锁/current/deliver
 # 命名；未传入时为空 = 单任务命名（run.lock / current.json / deliver）。

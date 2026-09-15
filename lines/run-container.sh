@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # run-container.sh — one task per throwaway container off the golden image
 # hfv-task:latest: no fixed numbered slot, no per-slot timer, no per-slot
-# clone. A task gets a fresh
-# container off hfv-task:latest; on clean exit the container is committed back
-# (flock-serialized roll-forward), so account state / default model / datasets
-# / chrome session all persist via the image. Data lives on the container
-# layer; code and caches stay bind-mounted on the host (delivery needs host
-# credentials; caches would bloat every commit layer).
+# clone. The golden image is a FROZEN base for parallel task containers: every
+# container starts from the same pinned world (this is what makes N parallel
+# containers safe), and NOTHING a task mutates flows back into the image — no
+# docker commit write-back (removed 2026-09-14: it was the serialization point
+# and a poisoning channel — a root-run container once committed a broken
+# ENTRYPOINT into golden). Code and caches stay bind-mounted on the host
+# (delivery needs host credentials). Intentional golden updates go through the
+# manual bootstrap-commit flow (install.sh), never as a task side effect.
 #
 # usage: run-container.sh <in-container-script.sh>   (basename under lines/)
 set -u
@@ -16,7 +18,6 @@ LOG_DIR="$HFV_DIR/logs"
 TS="$(date +%Y%m%d-%H%M%S)"
 CTR="hfv-task-$TS${HFV_SLOT:+-s$HFV_SLOT}"
 GOLDEN="hfv-task:latest"
-COMMIT_LOCK="$HFV_DIR/.commit.lock"
 
 log() { echo "[$(date +%Y%m%d-%H%M%S)] run-container: $*" >> "$LOG_DIR/daemon.log"; }
 
@@ -87,27 +88,10 @@ docker run \
 rc=$?
 log "$CTR exited rc=$rc"
 
-# --- commit back (serialized; a parallel task must not interleave layers) ---
-exec 9>"$COMMIT_LOCK"
-flock 9
-SNAP="hfv-task:snap-$TS"
-# pin the image config on every roll-forward: docker commit inherits the
-# container's config, so an overridden --entrypoint at `docker run` time would
-# otherwise poison the golden image.
-docker commit \
-  --change 'ENTRYPOINT ["/usr/bin/tini","--","/usr/local/bin/task-entrypoint.sh"]' \
-  --change 'CMD ["/home/inf/hands-free-vibe/lines/run-task.sh"]' \
-  "$CTR" "$SNAP" >>"$LOG_DIR/daemon.log" 2>&1 || true
-if [[ $rc -eq 0 ]]; then
-  # clean exit: roll the golden forward
-  docker tag "$SNAP" "$GOLDEN" >>"$LOG_DIR/daemon.log" 2>&1 \
-    && log "golden rolled forward from $CTR (snap=$SNAP)" \
-    || log "golden tag FAILED from $SNAP — snapshot kept"
-else
-  log "crash rc=$rc — snapshot $SNAP kept for forensics, golden NOT rolled"
-fi
-flock -u 9
-exec 9>&-
+# --- no commit-back: the golden image is a frozen base -----------------------
+# A task container is pure throwaway: no docker commit, no roll-forward, no
+# per-run snapshot image. Crash forensics live in the run log on the host.
+[[ $rc -ne 0 ]] && log "crash rc=$rc (no snapshot: commit-back removed) — see run-container-$TS.log"
 
 docker rm "$CTR" >>"$LOG_DIR/daemon.log" 2>&1 || true
 # Issue-line delivery happens in ExecStartPost on the HOST (post-task →
