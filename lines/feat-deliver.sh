@@ -8,8 +8,9 @@
 # stages branch + PR files under feat/deliver/ and THIS script publishes from
 # the slot clone with the host's credentials:
 #
-#   push branch to fork → gh pr create → add ci label + reviewer (the merge owner)
-#   → verify both → DM the merge owner the outcome → down the slot's svc stack.
+#   push branch to fork → enqueue PR creation (+ci label +merge-owner reviewer)
+#   into the gh outbox → the background gh-recorder creates the PR and DMs the
+#   merge owner the link → down the slot's svc stack.
 #
 # Idempotent and quiet: an absent/incomplete staging dir means the feat run
 # never reached delivery — one daemon.log line and exit 0 (the run log holds
@@ -66,36 +67,18 @@ if ! git -C "$SLOT_REPO" push "$FORK_REMOTE" "refs/heads/$BRANCH:refs/heads/$BRA
   exit 0
 fi
 
-PR_URL="$(gh pr create --repo "$GITHUB_REPO" --base "$PR_BASE" --head "$FORK_REMOTE:$BRANCH" \
-          --title "$TITLE" --body-file "$BODY_FILE" 2>>"$LOG_DIR/daemon.log")"
-if [[ -z "$PR_URL" ]]; then
-  # re-runs / duplicate branches: an open PR for this head may already exist
-  PR_URL="$(gh pr list --repo "$GITHUB_REPO" --head "$FORK_REMOTE:$BRANCH" --state open \
-            --json url --jq '.[0].url' 2>/dev/null || true)"
+# PR creation (+ ci label + merge-owner reviewer + the DM with the PR link) is
+# a GitHub write — enqueue it for the background gh-recorder (1-min timer,
+# retried with backoff, idempotent against an existing PR for the same head).
+if python3 "$DIR/lines/gh-outbox.py" pr-create --branch "$BRANCH" --title "$TITLE" \
+     --body-file "$BODY_FILE" --dm-owner --reviewers "$MERGE_OWNER_LOGIN" \
+     >>"$LOG_DIR/daemon.log" 2>&1; then
+  log "branch pushed; PR creation enqueued (recorder DMs the merge owner the link)"
+  dm "feat 任务分支已推送：$BRANCH —— PR 创建已排队，链接稍后由 gh-recorder 送达。"
+else
+  log "outbox enqueue FAILED for $BRANCH — nothing will create the PR"
+  dm "feat 交付失败：分支已推送但 PR 创建任务未能登记（$BRANCH），需人工 gh pr create。"
 fi
-if [[ -z "$PR_URL" ]]; then
-  log "gh pr create FAILED and no existing PR found for $FORK_REMOTE:$BRANCH"
-  dm "feat 交付失败：分支已推送但 PR 创建失败（$BRANCH），需人工 gh pr create。"
-  bash "$DIR/lines/run-slot.sh" "${HFV_SLOT:-9}" --down >>"$LOG_DIR/daemon.log" 2>&1 || true
-  exit 0
-fi
-PR_NUM="${PR_URL##*/}"
-
-# label + reviewer, then verify once; one retry (fork permission races happen)
-for _ in 1 2; do
-  gh pr edit "$PR_NUM" --repo "$GITHUB_REPO" --add-label ci --add-reviewer "$MERGE_OWNER_LOGIN" \
-    >>"$LOG_DIR/daemon.log" 2>&1 || true
-  ok_label="$(gh pr view "$PR_NUM" --repo "$GITHUB_REPO" --json labels \
-              --jq '[.labels[].name] | any(. == "ci")' 2>/dev/null || echo false)"
-  ok_rev="$(gh pr view "$PR_NUM" --repo "$GITHUB_REPO" --json reviewRequests \
-            --jq "[.reviewRequests[].login] | any(. == \"$MERGE_OWNER_LOGIN\")" 2>/dev/null || echo false)"
-  [[ "$ok_label" == "true" && "$ok_rev" == "true" ]] && break
-done
-[[ "$ok_label" == "true" && "$ok_rev" == "true" ]] \
-  || log "pr=$PR_NUM: label/reviewer NOT both in effect after retry (label=$ok_label reviewer=$ok_rev) — fork permissions may block; noted"
-
-log "delivered $PR_URL (branch=$BRANCH)"
-dm "feat 任务已交付 PR：$PR_URL（分支 $BRANCH；ci 标签/reviewer 状态：$ok_label/$ok_rev）。"
 rm -rf "$FDIR"
 
 # Idle-down the slot's svc stack: feat is one-shot, ~8G of ES/MySQL should not

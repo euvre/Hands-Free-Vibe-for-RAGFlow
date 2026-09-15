@@ -163,7 +163,37 @@ def iso_to_ms(s):
         return 0
 
 
+SNAP_DIR = os.path.join(DIR, "lines", "gh-store")
+SNAP_FRESH_MS = 15 * 60 * 1000
+
+
+def _snap_overview(num, extra_fields=""):
+    """The gh-recorder's snapshot in gh --json shape (async scan, 1-min
+    cadence). None when missing/stale or when the comment inventory never
+    completed — the follow logic must not judge on partial comments."""
+    try:
+        d = json.load(open(os.path.join(SNAP_DIR, "pr-%d.json" % num)))
+    except Exception:
+        return None
+    if time.time() * 1000 - d.get("fetched_at", 0) > SNAP_FRESH_MS:
+        return None
+    if "comments" not in d:
+        return None
+    ov = {
+        "state": d.get("state") or "",
+        "headRefName": d.get("head_ref") or "",
+        "comments": d.get("comments") or [],
+        "reviews": d.get("reviews") or [],
+    }
+    if "headRefOid" in extra_fields:
+        ov["headRefOid"] = d.get("head_oid") or ""
+    return ov
+
+
 def pr_overview(num, extra_fields=""):
+    ov = _snap_overview(num, extra_fields)
+    if ov is not None:
+        return ov
     fields = "state,headRefName,comments,reviews" + ("," + extra_fields if extra_fields else "")
     rc, out = run(["gh", "pr", "view", str(num), "--repo", GITHUB_REPO,
                    "--json", fields])

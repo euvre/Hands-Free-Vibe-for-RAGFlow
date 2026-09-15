@@ -174,17 +174,13 @@ classify_failures() { # <worktree> → echoes env | flaky | substantive | unknow
   echo flaky
 }
 
-rerun_ci() { # <pr-num> — retrip the label-gated CI suite; never leaves the
-  # PR unlabeled (re-add retries, and a final failure is reported loudly).
-  local num="$1" i
-  gh pr edit "$num" --repo "$GITHUB_REPO" --remove-label "$PR_LABEL" >>"$LOG_DIR/daemon.log" 2>&1 || return 1
-  sleep 3
-  for i in 1 2 3; do
-    gh pr edit "$num" --repo "$GITHUB_REPO" --add-label "$PR_LABEL" >>"$LOG_DIR/daemon.log" 2>&1 && return 0
-    sleep 5
-  done
-  log "pr=$num: ci label re-add FAILED 3x — PR may sit WITHOUT its ci label; needs a manual look"
-  return 1
+rerun_ci() { # <pr-num> — retrip the label-gated CI suite. The remove+add pair
+  # is ONE outbox record (gh-outbox label --remove X --add X), so the recorder
+  # drains them in order within the same pass — the PR is never left unlabeled.
+  local num="$1"
+  python3 "$DIR/lines/gh-outbox.py" label --pr "$num" \
+    --remove "$PR_LABEL" --add "$PR_LABEL" >>"$LOG_DIR/daemon.log" 2>&1 || return 1
+  log "pr=$num: ci label retrip enqueued (recorder drains within a minute)"
 }
 
 ledger_entry() { # <pr-num> → "sha<TAB>action" of the last attempt (or empty)
@@ -243,11 +239,14 @@ while IFS=$'\t' read -r num branch url mid fails scope; do
         echo
         echo "The failure logs do not look like a runner flake, so a plain re-run may not help. Could you take a look? (automated notice — sorry if this was already fixed by a newer push)"
       } > "$body"
-      if gh pr comment "$num" --repo "$GITHUB_REPO" --body-file "$body" >>"$LOG_DIR/daemon.log" 2>&1; then
-        log "pr=$num: external CI failure commented on the PR"
+      # the comment goes to the outbox (drained within a minute); stamp on
+      # enqueue — the recorder owns retries now, re-stamping on gh failure
+      # would duplicate the comment across ticks.
+      if python3 "$DIR/lines/gh-outbox.py" comment --pr "$num" --body-file "$body" >>"$LOG_DIR/daemon.log" 2>&1; then
+        log "pr=$num: external CI failure comment enqueued"
         [[ -n "$head_sha" ]] && python3 "$DIR/lines/pr-ci-collect.py" stamp "$num" "$head_sha" notify >>"$LOG_DIR/daemon.log" 2>&1 || true
       else
-        log "pr=$num: external CI failure comment FAILED — left unstamped (retry next tick)"
+        log "pr=$num: external CI failure comment enqueue FAILED — left unstamped (retry next tick)"
       fi
       rm -f "$body"
     else

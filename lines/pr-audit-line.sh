@@ -89,7 +89,25 @@ source "$DIR/lines/pr-llm-run.sh"
 write_meta() { # <num> <wt> <sha> <branch> — PR snapshot for the LLM's first read
   local num="$1" wt="$2" sha="$3" branch="$4" ad="$AUDIT_ROOT/pr-$num"
   local full title author body base adds dels files base_sha nstat more
-  full="$(gh pr view "$num" --repo "$GITHUB_REPO" \
+  # gh-recorder pre-scans every tracked PR into gh-store — a fresh snapshot
+  # (< 15 min) makes this a local file read; gh is only the cold fallback.
+  full="$(python3 - "$num" <<'EOF'
+import json, os, sys, time
+p = os.path.join(os.environ["HOME"], "hands-free-vibe/lines/gh-store/pr-%d.json" % int(sys.argv[1]))
+try:
+    d = json.load(open(p))
+    fresh = (time.time() * 1000 - d.get("fetched_at", 0)) < 15 * 60 * 1000
+except Exception:
+    fresh = False
+if fresh:
+    print(json.dumps({
+        "title": d.get("title") or "", "author": {"login": d.get("author") or "?"},
+        "body": d.get("body") or "", "additions": d.get("additions"),
+        "deletions": d.get("deletions"), "changedFiles": d.get("changed_files"),
+        "baseRefName": d.get("base_ref") or ""}))
+EOF
+)"
+  [[ -n "$full" ]] || full="$(gh pr view "$num" --repo "$GITHUB_REPO" \
     --json title,author,body,additions,deletions,changedFiles,baseRefName 2>/dev/null || true)"
   if [[ -n "$full" ]]; then
     title="$(jq -r .title <<<"$full")"
@@ -102,7 +120,7 @@ write_meta() { # <num> <wt> <sha> <branch> — PR snapshot for the LLM's first r
     body="$(jq -r .body <<<"$full" | head -c 6000)"
     [[ ${#body} -ge 6000 ]] && body="${body}
 
-…(body truncated at 6000 chars in this snapshot; fetch the rest via 'gh pr view $num --repo $GITHUB_REPO --json body' if needed)"
+…(body truncated at 6000 chars in this snapshot; the full body is in the gh-recorder snapshot: $DIR/lines/gh-store/pr-$num.json — field .body)"
   else
     title="(gh pr view failed — fetch it yourself)" author="?" base="$PR_BASE" adds="?" dels="?" files="?" body=""
   fi
@@ -249,21 +267,22 @@ publish_verdict() { # <num> <sha>
       *)    echo "(audit verdict: $verdict; detail body was empty)" > "$body_file" ;;
     esac
   fi
-  if gh pr comment "$num" --repo "$GITHUB_REPO" --body-file "$body_file" >>"$LOG_DIR/daemon.log" 2>&1; then
-    log "pr=$num: audit reply posted (verdict=$verdict)"
+  # GitHub writes go to the outbox — gh-recorder (1-min timer) drains them.
+  # Local enqueue is practically infallible, so the verdict stamps as published
+  # immediately; the recorder retries with backoff until the comment lands.
+  if python3 "$DIR/lines/gh-outbox.py" comment --pr "$num" --body-file "$body_file" >>"$LOG_DIR/daemon.log" 2>&1; then
+    log "pr=$num: audit reply enqueued (verdict=$verdict)"
     # LGTM = the audit gate passed: label it like an issue-line delivery
-    # (same label PR_LABEL, verified in effect).
+    # (same label PR_LABEL).
     if [[ "$verdict" == "LGTM" ]]; then
-      gh pr edit "$num" --repo "$GITHUB_REPO" --add-label "$PR_LABEL" >>"$LOG_DIR/daemon.log" 2>&1 || true
-      labeled="$(gh pr view "$num" --repo "$GITHUB_REPO" --json labels --jq "[.labels[].name] | any(. == \"$PR_LABEL\")" 2>/dev/null || echo false)"
-      log "pr=$num: label $PR_LABEL $labeled"
+      python3 "$DIR/lines/gh-outbox.py" label --pr "$num" --add "$PR_LABEL" >>"$LOG_DIR/daemon.log" 2>&1 || true
     fi
     python3 "$DIR/lines/pr-audit.py" stamp "$num" "$sha" "$verdict" >>"$LOG_DIR/daemon.log" 2>&1 || true
     dm_notify "$num" "$verdict"
   else
-    # posting failed (network/gh): stamp unpublished so the tick does not loop
+    # enqueue failed (local fs): stamp unpublished so the tick does not loop
     # on the same sha — a human follows up via the DM.
-    log "pr=$num: gh pr comment FAILED (verdict=$verdict) — stamped unpublished"
+    log "pr=$num: outbox enqueue FAILED (verdict=$verdict) — stamped unpublished"
     python3 "$DIR/lines/pr-audit.py" stamp "$num" "$sha" "unpublished-$verdict" >>"$LOG_DIR/daemon.log" 2>&1 || true
     dm_notify "$num" unpublished
   fi

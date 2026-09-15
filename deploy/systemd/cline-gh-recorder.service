@@ -1,0 +1,9 @@
+[Unit]
+Description=Cline gh-recorder: the ONLY GitHub interop point — drains the write outbox (PR comments / labels / PR creation) and asynchronously scans tracked PRs into lines/gh-store/ (comments with image transcription, audit pre-scan meta)
+
+[Service]
+Type=oneshot
+TimeoutStartSec=10min
+ExecStart=/usr/bin/python3 %h/hands-free-vibe/lines/gh-recorder.py
+StandardOutput=append:%h/hands-free-vibe/logs/gh-recorder.log
+StandardError=append:%h/hands-free-vibe/logs/gh-recorder.log

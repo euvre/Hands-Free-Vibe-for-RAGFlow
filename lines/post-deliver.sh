@@ -9,6 +9,7 @@
 set -u
 DIR="$(cd "$(dirname "$0")/.." && pwd)"  # repo root (this script lives in lines/)
 source "$DIR/framework/source.sh"
+source "$DIR/config.sh"  # PR_BASE/PR_REVIEWER/FORK_REMOTE for the outbox record
 SUF=""
 [[ -n "${HFV_SLOT:-}" ]] && SUF="-s$HFV_SLOT"
 DELIVER_DIR="$DIR/deliver$SUF"
@@ -108,12 +109,12 @@ fi
 BRANCH="$(cat "$BRANCH_FILE" | tr -d '[:space:]')"
 TITLE="$(cat "$TITLE_FILE" | head -1)"
 
-echo "[$(date +%Y%m%d-%H%M%S)] post-deliver: creating PR branch=$BRANCH mid=$MID" >> "$LOG_DIR/daemon.log"
+echo "[$(date +%Y%m%d-%H%M%S)] post-deliver: pushing branch=$BRANCH mid=$MID" >> "$LOG_DIR/daemon.log"
 
-PR_URL="$(DELIVER_WORKDIR="$WORKTREE" bash "$DELIVER_SCRIPT" -b "$BRANCH" -m "$MSG_FILE" -t "$TITLE" -d "$BODY_FILE" -i "$MID" 2>>"$LOG_DIR/deliver.log")"
+DELIVER_WORKDIR="$WORKTREE" bash "$DELIVER_SCRIPT" -b "$BRANCH" -m "$MSG_FILE" -t "$TITLE" -d "$BODY_FILE" -i "$MID" >>"$LOG_DIR/deliver.log" 2>&1
 rc=$?
 
-if [[ $rc -ne 0 || -z "$PR_URL" ]]; then
+if [[ $rc -ne 0 ]]; then
   echo "[$(date +%Y%m%d-%H%M%S)] post-deliver: issue-deliver.sh failed rc=$rc — replying failure to thread" >> "$LOG_DIR/daemon.log"
   "$REPLY_SCRIPT" "$MID" "交付失败（自动消息）：PR 创建过程出错，详见日志。代码改动已在本地备份（refs/backup/deliver-*，取自任务 worktree 的真实改动），可手动恢复。" >> "$LOG_DIR/deliver.log" 2>&1 || true
   drop_worktree
@@ -121,16 +122,27 @@ if [[ $rc -ne 0 || -z "$PR_URL" ]]; then
   exit 0
 fi
 
-# Reply in the original thread (or as a comment on the GitHub issue for
-# gh- records — issue-reply.py dispatches on the id prefix) with the PR link.
-if is_gh "$MID"; then
-  REPLY_TEXT="Fix proposed in $PR_URL — root-cause analysis and fix details are in the PR description; it closes this issue when merged."
+# The branch is on the fork. PR creation (+ ci label + reviewers + the PR-link
+# reply to the originating thread) is a GitHub write — enqueue it for the
+# background gh-recorder (drained within a minute, retried with backoff).
+# Blame-informed extra reviewers are computed NOW, while the task worktree
+# still exists; the merge owner stays the fixed first reviewer.
+EXTRA_REVIEWERS="$(python3 "$DIR/issues/deliver_blame_reviewers.py" "$WORKTREE" "origin/$PR_BASE" HEAD 2>>"$LOG_DIR/deliver.log" || true)"
+EXTRA_REVIEWERS="${EXTRA_REVIEWERS//$'\n'/}"
+REVIEWERS="$PR_REVIEWER"
+[[ -n "$EXTRA_REVIEWERS" ]] && REVIEWERS="$PR_REVIEWER,$EXTRA_REVIEWERS"
+TASK_ID="$(python3 -c "import json;print(json.load(open('$ISSUE_FILE')).get('task_id') or '')" 2>/dev/null || true)"
+if python3 "$DIR/lines/gh-outbox.py" pr-create --branch "$BRANCH" --title "$TITLE" \
+     --body-file "$BODY_FILE" --mid "$MID" --task-id "$TASK_ID" \
+     --reviewers "$REVIEWERS" >>"$LOG_DIR/daemon.log" 2>&1; then
+  echo "[$(date +%Y%m%d-%H%M%S)] post-deliver: PR creation enqueued branch=$BRANCH (recorder replies the PR link)" >> "$LOG_DIR/daemon.log"
 else
-  REPLY_TEXT="已提交 PR：$PR_URL 。根因分析及修复说明详见 PR 描述。"
+  # local enqueue failure — nothing will create the PR; report it now
+  echo "[$(date +%Y%m%d-%H%M%S)] post-deliver: outbox enqueue FAILED for branch=$BRANCH" >> "$LOG_DIR/daemon.log"
+  "$REPLY_SCRIPT" "$MID" "交付失败（自动消息）：分支已推送但 PR 创建任务未能登记，详见日志。分支 $BRANCH 已在远端，可手动建 PR。" >> "$LOG_DIR/deliver.log" 2>&1 || true
 fi
-"$REPLY_SCRIPT" "$MID" "$REPLY_TEXT" >> "$LOG_DIR/deliver.log" 2>&1 || true
 
-echo "[$(date +%Y%m%d-%H%M%S)] post-deliver: PR delivered $PR_URL reply sent" >> "$LOG_DIR/daemon.log"
+echo "[$(date +%Y%m%d-%H%M%S)] post-deliver: branch pushed, PR pending in outbox (mid=$MID)" >> "$LOG_DIR/daemon.log"
 
 # Delivery closes this issue's work: drop the cline-session resume file so no
 # later run accidentally continues a finished conversation (see run-task.sh
@@ -138,12 +150,11 @@ echo "[$(date +%Y%m%d-%H%M%S)] post-deliver: PR delivered $PR_URL reply sent" >>
 rm -f "$LOG_DIR/.last-session-$MID"
 
 # Archive the delivery into the task's context dir (tasks/<id>/) so a later
-# follow-up run can build on the previous work.
-TASK_ID="$(python3 -c "import json;print(json.load(open('$ISSUE_FILE')).get('task_id') or '')" 2>/dev/null || true)"
+# follow-up run can build on the previous work. The pr url file is written by
+# the gh-recorder when the PR actually exists; title/body are staged now.
 if [[ -n "$TASK_ID" ]]; then
   TDIR="$DIR/tasks/$TASK_ID"
   mkdir -p "$TDIR"
-  echo "$PR_URL" > "$TDIR/pr"
   cp -f "$TITLE_FILE" "$TDIR/pr-title.txt" 2>/dev/null || true
   cp -f "$BODY_FILE" "$TDIR/pr-body.md" 2>/dev/null || true
 fi
