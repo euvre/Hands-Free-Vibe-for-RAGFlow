@@ -81,9 +81,10 @@ PR line (manual single-shot; auto passes run on the pr timers):
   hfv pr rebase follow         tail -f the latest rebase-stage log
   hfv pr audit <pr-num>       WE review someone else's PR as the reviewer:
                                full code-quality audit + main-task-grade e2e
-                               test in the resident audit cluster, then reply
-                               on the PR (LGTM when clean); the auto line also
-                               picks up PRs review-requested to us
+                               test in this PR's own on-demand e2e group
+                               (hfv-svc-pr<N>, up for the round, down after),
+                               then reply on the PR (LGTM when clean); the
+                               auto line also picks up PRs review-requested to us
   hfv pr audit log            last 40 lines of the latest audit-stage log
   hfv pr audit follow         tail -f the latest audit-stage log
   hfv pr audit up <worktree>  bring the on-demand audit cluster (hfv-svc-audit)

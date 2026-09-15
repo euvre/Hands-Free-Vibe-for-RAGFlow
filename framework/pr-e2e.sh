@@ -64,7 +64,7 @@ USG
 
 names() { # <num|name> — derive every group-local name from the argument
   case "$1" in
-    *[!0-9]*) SUFFIX="$1" ;;      # named resident cluster (audit)
+    *[!0-9]*) SUFFIX="$1" ;;      # named group (manual/debug use; volumes persist)
     *)        SUFFIX="pr$1" ;;    # numeric: throwaway per-PR cluster
   esac
   NET="hfv-net-$SUFFIX"; PROJ="hfv-svc-$SUFFIX"
@@ -89,8 +89,8 @@ do_up() { # <num> <worktree>
      && [[ "$(wt_of_state)" == "$wt" ]]; then
     echo "pr-e2e: $CTR already up — reusing"
   else
-    # no worker, or the resident worker still points at a STALE worktree
-    # (resident cluster: every PR gets its own mount) — (re)create it.
+    # no worker, or the live worker still points at a STALE worktree
+    # (a named group serves different worktrees across uses) — (re)create it.
     docker rm -f "$CTR" >/dev/null 2>&1 || true
     mkdir -p "$E2E_ROOT/go" "$E2E_ROOT/go-build" "$E2E_ROOT/uv-cache" "$E2E_ROOT/npm-cache"
     # native-libs view: upstream build.sh --go does `mkdir -p` + `ln -sf`
