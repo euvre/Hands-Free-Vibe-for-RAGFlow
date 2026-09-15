@@ -14,9 +14,12 @@ reviewers, rebasing, and the merge-readiness report all happen on their own.
 land in a local store as opaque records; attachments are downloaded, and
 screenshots and screen recordings are transcribed into text by a vision model,
 so the fixer never has to open an image. The recorder is a generic component
-with pluggable sources — GitHub issues once fed the same store as a second
-source (that line is retired, the code remains), and downstream stages only ever
-dispatch on the message_id prefix, never on where a record came from.
+with pluggable sources: alongside the primary Lark group source there is an
+experimental GitHub issue source — open issues picked up by label, with
+screenshot links in the body and comments downloaded and transcribed at record
+time, just like Feishu attachments. Both sources write into the same store, and
+downstream stages only ever dispatch on the message_id prefix, never on where a
+record came from.
 
 **The fix.** Every task runs in a throwaway container. The golden image is
 frozen: the full service stack (MySQL / Elasticsearch / Redis / MinIO / NATS),
