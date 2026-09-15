@@ -92,6 +92,16 @@ for d in rag/res/deepdoc ragflow_deps/nltk_data; do
     ln -s "$RAGFLOW_MAIN/$d" "$WT/$d"
   fi
 done
+# prebuilt go server: the launcher only builds when bin/ragflow_server is
+# absent, and a cold cgo+ORT link costs minutes per task. Hardlink the main
+# clone's fresh build into the worktree (same fs, free); fall back to a copy.
+# WARNING: a stale/non-cgo binary here silently breaks the in-process DeepDoc
+# backend — rebuild it in a golden container whenever build.sh/ORT change.
+if [[ -x "$RAGFLOW_MAIN/bin/ragflow_server" && ! -e "$WT/bin/ragflow_server" ]]; then
+  mkdir -p "$WT/bin"
+  ln "$RAGFLOW_MAIN/bin/ragflow_server" "$WT/bin/ragflow_server" 2>/dev/null \
+    || cp "$RAGFLOW_MAIN/bin/ragflow_server" "$WT/bin/ragflow_server"
+fi
 
 log "starting $CTR (script=$SCRIPT wt=$WT)"
 
