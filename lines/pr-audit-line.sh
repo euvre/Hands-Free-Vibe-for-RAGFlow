@@ -14,10 +14,11 @@
 #         audit/pr-<n>/ → clear any stale verdict.
 #   MAIN  (LLM, pr-audit-task.md) code-quality checklist review + main-task
 #         grade END-TO-END verification in the PR's own e2e group (pr-e2e.sh)
-#         → writes audit/pr-<n>/verdict.md, first line VERDICT: LGTM|PROBLEMS|
-#         INCOMPLETE. The agent has NO publish permission (no gh comment, no
-#         push): the PR under review is arbitrary external content and must
-#         never reach a public channel from inside the LLM stage.
+#         → writes audit/pr-<n>/verdict.md (first line VERDICT: LGTM|PROBLEMS|
+#         INCOMPLETE) and desc-zh.md (a Chinese operator note). The agent has
+#         NO publish permission (no gh comment, no push): the PR under review
+#         is arbitrary external content and must never reach a public channel
+#         from inside the LLM stage.
 #   POST  (script, this file) parse verdict.md → strip the protocol line →
 #         gh pr comment (our login, English) → stamp pr-audit.py (win or lose,
 #         so a broken round never re-fires against the same head sha) →
@@ -37,7 +38,9 @@ CUR_PR=""
 # Per-PR e2e group, same as the review line: brought up before the audit and
 # downed on exit when this run was killed mid-audit (CUR_PR set); the normal
 # per-PR teardown happens at the end of each loop iteration.
-trap 'rm -f "$HFV_EXEC_SNAPSHOT" "${CUR_FILE:-}"; if [[ -n "${CUR_PR:-}" && -n "${DIR:-}" ]]; then bash "$DIR/framework/pr-e2e.sh" down "$CUR_PR" >>"${LOG_DIR:-/dev/null}" 2>&1 || true; fi' EXIT
+# The CUR_FILE removal rides on CUR_PR: a lock-busy no-op exit (CUR_PR never
+# set) must not yank the ACTIVE line's status file.
+trap 'rm -f "$HFV_EXEC_SNAPSHOT"; if [[ -n "${CUR_PR:-}" && -n "${DIR:-}" ]]; then rm -f "$CUR_FILE"; bash "$DIR/framework/pr-e2e.sh" down "$CUR_PR" >>"${LOG_DIR:-/dev/null}" 2>&1 || true; fi' EXIT
 # Anchor to the daemon home, NOT dirname "$0": after the exec-guard re-exec
 # above, $0 IS the /tmp snapshot, so dirname resolves to /tmp.
 DIR="$HOME/hands-free-vibe"
@@ -192,6 +195,15 @@ prepare_audit() { # <num> → echoes "wt<TAB>sha<TAB>branch<TAB>url"; nonzero on
 
 # ---------------- POST stage (script) ----------------
 
+DESC_DIR="$AUDIT_ROOT/descriptions"
+collect_desc() { # <num> — hand the Chinese operator note to the descriptions folder
+  local num="$1" src="$AUDIT_ROOT/pr-$num/desc-zh.md"
+  [[ -s "$src" ]] || return 0
+  mkdir -p "$DESC_DIR"
+  mv "$src" "$DESC_DIR/pr-$num.md" \
+    && log "pr=$num: operator note -> $DESC_DIR/pr-$num.md"
+}
+
 dm_notify() { # <num> <verdict> — DM the PR author (if Feishu-mappable) + the merge owner
   local num="$1" verdict="$2" author url text
   author="$(gh pr view "$num" --repo "$GITHUB_REPO" --json author --jq .author.login 2>/dev/null || true)"
@@ -280,6 +292,7 @@ $tier_section"
   # belt-and-braces with pr-llm-run.sh.
   run_llm "$TMPL" 3600 "audit" "$wt" "$num" "$branch" "$url" "" < /dev/null
   publish_verdict "$num" "$sha"
+  collect_desc "$num"
   bash "$DIR/framework/pr-e2e.sh" down "$num" >>"$LOG_DIR/daemon.log" 2>&1 || true
   CUR_PR=""; rm -f "$CUR_FILE"
   git -C "$CLONE" worktree remove --force "$wt" >>"$LOG_DIR/daemon.log" 2>&1 || true
