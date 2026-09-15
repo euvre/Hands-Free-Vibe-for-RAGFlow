@@ -14,6 +14,9 @@ usage:
   gh-outbox.py pr-create --branch B --title T --body-file F (--mid M | --dm-owner)
                          [--task-id T] [--reviewers u1,u2]
   gh-outbox.py push      --worktree WT --branch B [--remote R] [--force-with-lease]
+  gh-outbox.py rescan    --pr N    (ask the recorder to deep-fetch this PR now —
+                         use when the gh-store snapshot is missing/stale; the
+                         snapshot refreshes within ~1-2 min)
 
 --after chains records: the dependent executes only once the referenced
 record is done (comment after push: the reply publishes only when the commits
@@ -95,6 +98,9 @@ def main():
     g.add_argument("--remote", default="", help="default: the configured fork")
     g.add_argument("--force-with-lease", action="store_true")
 
+    r = sub.add_parser("rescan", help="force a deep-fetch of one PR's snapshot")
+    r.add_argument("--pr", type=int, required=True)
+
     a = ap.parse_args()
     if a.kind == "label" and not (a.add or a.remove):
         ap.error("label needs --add and/or --remove")
@@ -109,6 +115,8 @@ def main():
     elif a.kind == "push":
         rec.update(worktree=a.worktree, branch=a.branch, remote=a.remote,
                    force_with_lease=bool(a.force_with_lease))
+    elif a.kind == "rescan":
+        rec.update(pr=a.pr)
     else:
         rec.update(branch=a.branch, title=a.title,
                    body=open(a.body_file).read(), mid=a.mid,

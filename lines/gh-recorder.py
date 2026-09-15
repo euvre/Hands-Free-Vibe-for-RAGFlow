@@ -258,12 +258,20 @@ def _do_push(rec):
     return True
 
 
+def _do_rescan(rec):
+    """An agent found its PR's snapshot missing/stale — deep-fetch now,
+    regardless of the cheap-poll fingerprint. Read-only; failures retry."""
+    num = int(rec["pr"])
+    return _deep_fetch(num, _load_snap(num) or {})
+
+
 def drain_outbox():
     pend = os.path.join(OUTBOX, "pending")
     if not os.path.isdir(pend):
         return
     handlers = {"comment": _do_comment, "label": _do_label,
-                "pr_create": _do_pr_create, "push": _do_push}
+                "pr_create": _do_pr_create, "push": _do_push,
+                "rescan": _do_rescan}
     for path in sorted(glob.glob(os.path.join(pend, "*.json"))):
         try:
             rec = json.load(open(path))
@@ -529,7 +537,7 @@ def _deep_fetch(num, snap):
                   "updatedAt,url"], timeout=120)
     if rc != 0 or not out.strip():
         log("pr=%d: deep fetch failed" % num)
-        return
+        return False
     meta = json.loads(out)
     rc, checks_out = gh(["pr", "checks", str(num), "--repo", GITHUB_REPO,
                          "--json", "bucket,name,link"], timeout=60)
@@ -561,8 +569,8 @@ def _deep_fetch(num, snap):
                                               "pr-comments-%d-*.jsonl" % num)))
         if snaps:
             md, comments, reviews = _render_comments(num, snaps[-1])
-            # the raw JSONL rides along: agents pull individual bot/own bodies
-            # by id from this stable path (the md caps them for brevity)
+            # the raw JSONL rides along: capped walls (>6000 chars) are
+            # pulled in full by id from this stable path
             import shutil
             shutil.copyfile(snaps[-1], os.path.join(
                 GH_STORE, "pr-%d-comments.jsonl" % num))
@@ -581,6 +589,7 @@ def _deep_fetch(num, snap):
     _write_snap(num, snap)
     log("pr=%d: snapshot refreshed (state=%s oid=%s)"
         % (num, snap.get("state"), (snap.get("head_oid") or "")[:10]))
+    return True
 
 
 
