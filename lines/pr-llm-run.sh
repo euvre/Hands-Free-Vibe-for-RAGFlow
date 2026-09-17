@@ -42,6 +42,41 @@ TRANSIENT_PATTERN='rate.?limit|too many requests|\b429\b|overloaded|temporarily 
 
 pr_log() { echo "[$(date +%Y%m%d-%H%M%S)] ${LLM_TAG:-pr-llm}: $*" >> "$LOG_DIR/daemon.log"; }
 
+# ---------------------------------------------------------------------------
+# Host-side push ownership. Since the outbox migration the in-container agent
+# only COMMITS (containers carry no credentials); the push is the line's job,
+# done HERE: enqueued after the LLM stage, executed by gh-recorder with the
+# host's credentials, and the worktree provably outlives it — the recorder
+# refuses a push whose worktree is gone (_is_pool_worktree), so a push the
+# agent used to enqueue seconds before stage end died on the next tick.
+line_push_record() { # <worktree> <branch> [--force-with-lease] → echoes record id; rc 0 enqueued / 2 nothing-to-push / 1 enqueue failed
+  local wt="$1" branch="$2" fwl="${3:-}" id
+  # an unfinished rebase/merge or an unmoved HEAD = nothing to push
+  if git -C "$wt" rev-parse --verify REBASE_HEAD >/dev/null 2>&1 \
+     || git -C "$wt" rev-parse --verify MERGE_HEAD >/dev/null 2>&1; then
+    pr_log "line_push: $wt mid-rebase/merge — not pushing"
+    return 2
+  fi
+  git -C "$wt" rev-parse --verify HEAD >/dev/null 2>&1 || return 2
+  git -C "$wt" merge-base --is-ancestor HEAD "$FORK_REMOTE/$branch" 2>/dev/null && return 2
+  local args=(push --worktree "$wt" --branch "$branch")
+  [[ -n "$fwl" ]] && args+=(--force-with-lease)
+  id="$(python3 "$_PR_LLM_DIR/lines/gh-outbox.py" "${args[@]}")" || { pr_log "line_push: enqueue failed for $wt"; return 1; }
+  printf '%s' "$id"
+  return 0
+}
+
+wait_outbox_record() { # <record-id> → 0 done / 1 failed-or-timeout
+  local id="$1" i
+  for i in $(seq 1 60); do   # the recorder ticks every minute; a ~5 min cap never wedges a line
+    [[ -f "$_PR_LLM_DIR/lines/gh-outbox/done/$id.json" ]] && return 0
+    [[ -f "$_PR_LLM_DIR/lines/gh-outbox/failed/$id.json" ]] && return 1
+    sleep 5
+  done
+  pr_log "wait_outbox_record: $id still pending after ~5 min"
+  return 1
+}
+
 run_llm() { # <tmpl> <timeout-s> <tag> <worktree> <pr-num> <branch> <url> <mid>
   local tmpl="$1" tmo="$2" tag="$3" wt="$4" num="$5" branch="$6" url="$7" mid="$8"
   local manual_note=""

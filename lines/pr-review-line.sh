@@ -49,7 +49,7 @@ DM="$DIR/tools/feishu-dm.py"
 QUOTA_PATTERN='usage limit|billing cycle|quota.{0,40}(refresh|exceed|exhaust)|insufficient.{0,20}quota|使用上限|限额.{0,20}重置|额度.{0,20}(耗尽|不足)'
 TRANSIENT_PATTERN='rate.?limit|too many requests|\b429\b|overloaded|temporarily unavailable|service unavailable|\b50[23]\b|try again later|high load|capacity exceeded|out of capacity|timed out|负载|限流|稍后重试'
 
-mkdir -p "$LOG_DIR" "$WTROOT"
+mkdir -p "$LOG_DIR" "$WTROOT" "$DIR/scratch"
 log() { echo "[$(date +%Y%m%d-%H%M%S)] pr-review-line: $*" >> "$LOG_DIR/daemon.log"; }
 
 exec 9>"$LOCK_FILE"
@@ -116,20 +116,6 @@ release_worktree() { # <pr-num>
   [[ -d "$wt" ]] && rm -rf "$wt" >>"$LOG_DIR/daemon.log" 2>&1 || true
 }
 
-# A push enqueued by the in-container agent lands in gh-outbox/pending/ and is
-# executed by gh-recorder on its next minute pass — REFUSED as terminal (no
-# retry) when the worktree is already gone (_is_pool_worktree). An agent that
-# enqueues its push seconds before the stage ends would otherwise always lose
-# this race. Hold the worktree until no pending push targets it (bounded).
-wait_pending_push() { # <worktree>
-  local wt="$1" i=0 pend
-  while :; do
-    pend="$(grep -l '\"worktree\": \"'"$wt"'\"' "$DIR"/lines/gh-outbox/pending/*.json 2>/dev/null || true)"
-    [[ -z "$pend" ]] && return 0
-    (( i >= 36 )) && { log "wait_pending_push: push for $wt still pending after ~180s — releasing anyway"; return 0; }
-    i=$((i+1)); sleep 5
-  done
-}
 
 notify_reviewers() { # <pr-num> — scriptable GitHub ops stay scripted
   local num="$1" logins
@@ -159,9 +145,10 @@ while IFS=$'\t' read -r num branch url mid; do
   log "review target pr=$num branch=$branch"
   CUR_PR="$num"; echo "$num" > "$CUR_FILE"
   wt="$(prepare_worktree "$num" "$branch")" || continue
+  rm -f "$DIR/scratch/pr-review-$num-reply.md"   # no stale reply from a crashed round
   # The LLM stage runs in one throwaway golden container off the frozen base
-  # (model providers baked in, services in-container). --creds: this line's
-  # agent pushes the fix and comments on the PR itself (its whitelist allows).
+  # (model providers baked in, services in-container). --creds: read access to
+  # GitHub (comment inventory) — pushes/comments are owned by the line above.
   HFV_SLOT="pr-review-$num" PR_TMPL="pr-review-task.md" PR_TAG="review" PR_NUM="$num" PR_BRANCH="$branch" PR_URL="$url" PR_MID="$mid" \
   GH_TOKEN="$(gh auth token 2>/dev/null || true)" \
     bash "$DIR/lines/run-container.sh" --wt "$wt" --creds run-pr-main.sh
@@ -173,9 +160,28 @@ while IFS=$'\t' read -r num branch url mid; do
   if [[ $rc -eq 0 || $rc -eq 124 ]] && [[ -n "$mid" ]]; then
     python3 "$DIR/lines/pr-follow.py" mark-done "$mid" "$num" "$branch" >>"$LOG_DIR/daemon.log" 2>&1 || true
   fi
+  # The agent only commits and stages its ONE summary reply at
+  # scratch/pr-review-<n>-reply.md; the line owns the push and posts the reply
+  # chained to it — a reply must never describe commits that never landed.
+  pid="$(line_push_record "$wt" "$branch")"; prc=$?
+  if [[ $prc -eq 0 ]]; then
+    wait_outbox_record "$pid" && log "pr=$num: fix pushed to $FORK_REMOTE/$branch" || log "pr=$num: push $pid failed — see gh-recorder.log"
+  elif [[ $prc -eq 2 ]]; then
+    log "pr=$num: no pushable state — branch unchanged"
+  fi
+  reply="$DIR/scratch/pr-review-$num-reply.md"
+  if [[ -s "$reply" ]]; then
+    if [[ $prc -eq 0 && -n "$pid" ]]; then
+      python3 "$DIR/lines/gh-outbox.py" comment --pr "$num" --body-file "$reply" --after "$pid" >>"$LOG_DIR/daemon.log" 2>&1 \
+        && log "pr=$num: summary reply enqueued (after push $pid)" || log "pr=$num: summary reply enqueue FAILED"
+    else
+      python3 "$DIR/lines/gh-outbox.py" comment --pr "$num" --body-file "$reply" >>"$LOG_DIR/daemon.log" 2>&1 \
+        && log "pr=$num: summary reply enqueued (no push this round)" || log "pr=$num: summary reply enqueue FAILED"
+    fi
+    rm -f "$reply"
+  fi
   CUR_PR=""; rm -f "$CUR_FILE"
   notify_reviewers "$num"
-  wait_pending_push "$wt"
   release_worktree "$num"
   n=$((n + 1))
 done <<<"$CANDS"

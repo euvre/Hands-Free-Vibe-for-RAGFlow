@@ -113,20 +113,6 @@ release_worktree() { # <pr-num>
   [[ -d "$wt" ]] && rm -rf "$wt" >>"$LOG_DIR/daemon.log" 2>&1 || true
 }
 
-# A push enqueued by the in-container agent lands in gh-outbox/pending/ and is
-# executed by gh-recorder on its next minute pass — REFUSED as terminal (no
-# retry) when the worktree is already gone (_is_pool_worktree). An agent that
-# enqueues its push seconds before the stage ends would otherwise always lose
-# this race. Hold the worktree until no pending push targets it (bounded).
-wait_pending_push() { # <worktree>
-  local wt="$1" i=0 pend
-  while :; do
-    pend="$(grep -l '\"worktree\": \"'"$wt"'\"' "$DIR"/lines/gh-outbox/pending/*.json 2>/dev/null || true)"
-    [[ -z "$pend" ]] && return 0
-    (( i >= 36 )) && { log "wait_pending_push: push for $wt still pending after ~180s — releasing anyway (recorder refuses it; the next round's prompt handles the failed record)"; return 0; }
-    i=$((i+1)); sleep 5
-  done
-}
 
 fetch_failure_logs() { # <pr-num> <worktree> — pull each failing job's log tail
   local num="$1" wt="$2" checks
@@ -319,8 +305,8 @@ while IFS=$'\t' read -r num branch url mid fails scope; do
   # makes it visible inside the container; /tmp is not shared).
   TMPL_CI="$DIR/tmp/pr-ci-task-$num-$(date +%s).md"
   sed -e "s|__CI_FAILS__|$fails|g" "$TMPL" > "$TMPL_CI"
-  # The LLM stage runs in one throwaway golden container. --creds: the agent
-  # plain-pushes the fix to the fork branch itself (its whitelist allows).
+  # The LLM stage runs in one throwaway golden container. --creds: read access
+  # to GitHub (check runs / logs) — the push is owned by this line (below).
   HFV_SLOT="pr-ci-$num" PR_TMPL="$TMPL_CI" PR_TAG="ci" PR_NUM="$num" PR_BRANCH="$branch" PR_URL="$url" PR_MID="$mid" \
   PR_TIMEOUT=1800 PR_PREFLIGHT=0 \
   GH_TOKEN="$(gh auth token 2>/dev/null || true)" \
@@ -329,7 +315,16 @@ while IFS=$'\t' read -r num branch url mid fails scope; do
   rm -f "$TMPL_CI"
   # stamps regardless of outcome: cooldown/budget hold even on failure
   [[ -n "$head_sha" ]] && python3 "$DIR/lines/pr-ci-collect.py" stamp "$num" "$head_sha" llm >>"$LOG_DIR/daemon.log" 2>&1 || true
-  wait_pending_push "$wt"
+  # The agent only COMMITS (the container carries no credentials); the push is
+  # the line's job, enqueued here and drained through the outbox while the
+  # worktree is provably alive — an agent-side enqueue seconds before stage
+  # end used to lose the race to release_worktree every single time.
+  pid="$(line_push_record "$wt" "$branch")"; prc=$?
+  case $prc in
+    0) wait_outbox_record "$pid" && log "pr=$num: fix pushed to $FORK_REMOTE/$branch" || log "pr=$num: push $pid failed — see gh-recorder.log" ;;
+    2) log "pr=$num: no pushable state (no new commits or mid-rebase) — branch unchanged" ;;
+    *) : ;;  # enqueue failure already logged by line_push_record
+  esac
   CUR_PR=""; rm -f "$CUR_FILE"
   release_worktree "$num"
   n=$((n + 1))

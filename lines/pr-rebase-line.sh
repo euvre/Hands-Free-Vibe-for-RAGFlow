@@ -113,20 +113,6 @@ release_worktree() { # <pr-num>
   [[ -d "$wt" ]] && rm -rf "$wt" >>"$LOG_DIR/daemon.log" 2>&1 || true
 }
 
-# A push enqueued by the in-container agent lands in gh-outbox/pending/ and is
-# executed by gh-recorder on its next minute pass — REFUSED as terminal (no
-# retry) when the worktree is already gone (_is_pool_worktree). An agent that
-# enqueues its push seconds before the stage ends would otherwise always lose
-# this race. Hold the worktree until no pending push targets it (bounded).
-wait_pending_push() { # <worktree>
-  local wt="$1" i=0 pend
-  while :; do
-    pend="$(grep -l '\"worktree\": \"'"$wt"'\"' "$DIR"/lines/gh-outbox/pending/*.json 2>/dev/null || true)"
-    [[ -z "$pend" ]] && return 0
-    (( i >= 36 )) && { log "wait_pending_push: push for $wt still pending after ~180s — releasing anyway"; return 0; }
-    i=$((i+1)); sleep 5
-  done
-}
 
 
 cand=0
@@ -153,7 +139,8 @@ while IFS=$'\t' read -r num branch url mid; do
     continue
   fi
   # The LLM stage runs in one throwaway golden container (frozen base).
-  # --creds: the agent force-with-lease pushes the rebased branch itself.
+  # --creds: read access to GitHub — the force-with-lease push is owned by
+  # this line (below), executed by gh-recorder with the host's credentials.
   # No framework pre-flight (parity with the old host stage; the agent may
   # still launch services itself inside its own container). PR_PRE_SECTION
   # carries the auto-rebase handover into the prompt.
@@ -169,8 +156,16 @@ while IFS=$'\t' read -r num branch url mid; do
   if [[ $rc -eq 0 || $rc -eq 124 ]] && [[ -n "$mid" ]]; then
     python3 "$DIR/lines/pr-follow.py" report-if-ready "$mid" "$num" "$branch" >>"$LOG_DIR/daemon.log" 2>&1 || true
   fi
+  # The agent only leaves the rebased state committed; the force-with-lease
+  # push is the line's job (the container carries no credentials) — enqueued
+  # here and drained through the outbox while the worktree is provably alive.
+  pid="$(line_push_record "$wt" "$branch" --force-with-lease)"; prc=$?
+  if [[ $prc -eq 0 ]]; then
+    wait_outbox_record "$pid" && log "pr=$num: rebased branch force-pushed (lease) to $FORK_REMOTE/$branch" || log "pr=$num: force-push $pid refused/failed — see gh-recorder.log"
+  elif [[ $prc -eq 2 ]]; then
+    log "pr=$num: no pushable state (rebase unfinished or unmoved) — branch unchanged"
+  fi
   CUR_PR=""; rm -f "$CUR_FILE"
-  wait_pending_push "$wt"
   release_worktree "$num"
   n=$((n + 1))
 done <<<"$CANDS"
