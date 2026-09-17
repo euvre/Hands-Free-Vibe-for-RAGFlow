@@ -9,9 +9,8 @@ DIR = os.path.dirname(os.path.abspath(__file__))
 _HOME = os.path.expanduser("~")
 
 DEFAULTS = {
-    # PR review/rebase/audit 线共用 RAGFLOW_MAIN 的 worktree 池（ragflow2/3 已去除）
+    # PR review/rebase/audit/ci 线共用 RAGFLOW_MAIN 的 worktree 池（ragflow2/3/5 已去除）
     "RAGFLOW_MAIN": "",
-    "RAGFLOW_CI_CLONE": "",
     "CLINE_BIN": "$HOME/.npm-global/bin/cline",
     "CLICKHOUSE_HTTP": "http://127.0.0.1:8123/",
     "GITHUB_REPO": "",

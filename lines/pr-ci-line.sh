@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # pr-ci-line.sh — the CI-FIX line of the PR follow-up (own timer, own lock,
-# ragflow5 clone with a per-PR worktree pool).
+# the MAIN clone's worktree pool in its own wt/ci-<n> namespace — same
+# sharing model as the review/rebase/audit lines: different lock, different
+# paths, git-side locks serialize the fetches).
 #
 # Each tick:
 #   1. collect (pr-ci-collect.py): our OPEN PRs with FAILING GitHub Actions
 #      checks, excluding conflicting PRs (the rebase line's turf), pending
 #      runs, and anything inside the per-sha/daily retry budget.
 #   2. for every candidate, serially: prepare a dedicated worktree
-#      (ragflow5/wt/<pr>) → pull the failing job logs into the worktree →
+#      (ragflow main clone's wt/ci-<pr>) → pull the failing job logs into the worktree →
 #      run the CI-fix LLM task (pr-ci-task.md, English) → stamp the ledger
 #      (win or lose) → clean the worktree.
 # Serial inside the line (one LLM at a time protects quota and the shared
@@ -39,7 +41,7 @@ N_INST=1
 LOCK_FILE="$DIR/pr-ci-$INST.lock"
 CUR_FILE="$DIR/.current-ci-$INST"
 source "$DIR/config.sh"
-CLONE="$RAGFLOW_CI_CLONE"
+CLONE="$RAGFLOW_MAIN"
 WTROOT="$CLONE/wt"
 TMPL="$DIR/prompts/pr-ci-task.md"
 
@@ -63,7 +65,7 @@ if [[ "${1:-}" == "--single" ]]; then
   [[ -z "$CANDS" ]] && { echo "pr-ci: PR #$2 has no fixable failing checks right now"; exit 0; }
 else
   [[ -x "$CLINE_BIN" && -s "$TMPL" ]] || { log "cline CLI or template missing, skipping"; exit 0; }
-  [[ -d "$CLONE/.git" ]] || { log "ci clone $CLONE missing, skipping"; exit 0; }
+  [[ -d "$CLONE/.git" ]] || { log "main clone $CLONE missing, skipping"; exit 0; }
   CANDS="$(python3 "$DIR/lines/pr-ci-collect.py" collect 2>>"$LOG_DIR/daemon.log")"
 fi
 [[ -z "$CANDS" ]] && exit 0
@@ -73,7 +75,7 @@ mkdir -p "$WTROOT"
 
 
 prepare_worktree() { # <pr-num> <branch> → echoes worktree dir
-  local num="$1" branch="$2" wt="$WTROOT/pr-$num"
+  local num="$1" branch="$2" wt="$WTROOT/ci-$num"
   # fetch the PR branch first: worktree add from $FORK_REMOTE/<branch> needs the
   # ref present locally (the clone may not have seen this branch yet).
   git -C "$CLONE" fetch -q "$FORK_REMOTE" "$branch" >>"$LOG_DIR/daemon.log" 2>&1 || \
@@ -105,7 +107,7 @@ prepare_worktree() { # <pr-num> <branch> → echoes worktree dir
 }
 
 release_worktree() { # <pr-num>
-  local wt="$WTROOT/pr-$1"
+  local wt="$WTROOT/ci-$1"
   git -C "$CLONE" worktree remove --force "$wt" >>"$LOG_DIR/daemon.log" 2>&1 || true
   git -C "$CLONE" worktree prune >>"$LOG_DIR/daemon.log" 2>&1 || true
   [[ -d "$wt" ]] && rm -rf "$wt" >>"$LOG_DIR/daemon.log" 2>&1 || true

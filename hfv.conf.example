@@ -4,7 +4,6 @@
 
 # ---- 仓库路径 ----
 RAGFLOW_MAIN=                      # 主线工作仓的绝对路径（issue 线修复/交付；PR 线 worktree 池也在其下）
-RAGFLOW_CI_CLONE=                  # pr-ci 线专用 clone（可空，空则该线自动休息）
 
 # ---- 工具 ----
 CLINE_BIN=$HOME/.npm-global/bin/cline

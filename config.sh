@@ -4,9 +4,8 @@
 HFV_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 RAGFLOW_MAIN="${RAGFLOW_MAIN:-}"
-# PR review/rebase/audit 线的 worktree 池直接建在 RAGFLOW_MAIN 下，靠锁 +
-# 路径命名空间隔离（wt/review-<n>、wt/rebase-<n>、wt/audit-<n>、wt/manual-<n>）。
-RAGFLOW_CI_CLONE="${RAGFLOW_CI_CLONE:-}"
+# PR review/rebase/audit/ci 线的 worktree 池直接建在 RAGFLOW_MAIN 下，靠锁 +
+# 路径命名空间隔离（wt/review-<n>、wt/rebase-<n>、wt/audit-<n>、wt/ci-<n>、wt/manual-<n>）。
 CLINE_BIN="${CLINE_BIN:-$HOME/.npm-global/bin/cline}"
 # host 上的 ClickHouse（run metrics / tasks 簿记；容器内经 socat 转发到同名端口）
 CLICKHOUSE_HTTP="${CLICKHOUSE_HTTP:-http://127.0.0.1:8123/}"
