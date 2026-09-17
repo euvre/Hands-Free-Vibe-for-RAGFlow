@@ -113,6 +113,21 @@ release_worktree() { # <pr-num>
   [[ -d "$wt" ]] && rm -rf "$wt" >>"$LOG_DIR/daemon.log" 2>&1 || true
 }
 
+# A push enqueued by the in-container agent lands in gh-outbox/pending/ and is
+# executed by gh-recorder on its next minute pass — REFUSED as terminal (no
+# retry) when the worktree is already gone (_is_pool_worktree). An agent that
+# enqueues its push seconds before the stage ends would otherwise always lose
+# this race. Hold the worktree until no pending push targets it (bounded).
+wait_pending_push() { # <worktree>
+  local wt="$1" i=0 pend
+  while :; do
+    pend="$(grep -l '\"worktree\": \"'"$wt"'\"' "$DIR"/lines/gh-outbox/pending/*.json 2>/dev/null || true)"
+    [[ -z "$pend" ]] && return 0
+    (( i >= 36 )) && { log "wait_pending_push: push for $wt still pending after ~180s — releasing anyway (recorder refuses it; the next round's prompt handles the failed record)"; return 0; }
+    i=$((i+1)); sleep 5
+  done
+}
+
 fetch_failure_logs() { # <pr-num> <worktree> — pull each failing job's log tail
   local num="$1" wt="$2" checks
   mkdir -p "$wt/hfv-ci-failures"
@@ -314,6 +329,7 @@ while IFS=$'\t' read -r num branch url mid fails scope; do
   rm -f "$TMPL_CI"
   # stamps regardless of outcome: cooldown/budget hold even on failure
   [[ -n "$head_sha" ]] && python3 "$DIR/lines/pr-ci-collect.py" stamp "$num" "$head_sha" llm >>"$LOG_DIR/daemon.log" 2>&1 || true
+  wait_pending_push "$wt"
   CUR_PR=""; rm -f "$CUR_FILE"
   release_worktree "$num"
   n=$((n + 1))

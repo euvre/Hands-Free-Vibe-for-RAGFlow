@@ -110,10 +110,25 @@ prepare_worktree() { # <pr-num> <branch> → echoes worktree dir
 }
 
 release_worktree() { # <pr-num>
-  local wt="$WTROOT/pr-$1"
+  local wt="$WTROOT/review-$1"   # must match prepare_worktree's review-$num
   git -C "$CLONE" worktree remove --force "$wt" >>"$LOG_DIR/daemon.log" 2>&1 || true
   git -C "$CLONE" worktree prune >>"$LOG_DIR/daemon.log" 2>&1 || true
   [[ -d "$wt" ]] && rm -rf "$wt" >>"$LOG_DIR/daemon.log" 2>&1 || true
+}
+
+# A push enqueued by the in-container agent lands in gh-outbox/pending/ and is
+# executed by gh-recorder on its next minute pass — REFUSED as terminal (no
+# retry) when the worktree is already gone (_is_pool_worktree). An agent that
+# enqueues its push seconds before the stage ends would otherwise always lose
+# this race. Hold the worktree until no pending push targets it (bounded).
+wait_pending_push() { # <worktree>
+  local wt="$1" i=0 pend
+  while :; do
+    pend="$(grep -l '\"worktree\": \"'"$wt"'\"' "$DIR"/lines/gh-outbox/pending/*.json 2>/dev/null || true)"
+    [[ -z "$pend" ]] && return 0
+    (( i >= 36 )) && { log "wait_pending_push: push for $wt still pending after ~180s — releasing anyway"; return 0; }
+    i=$((i+1)); sleep 5
+  done
 }
 
 notify_reviewers() { # <pr-num> — scriptable GitHub ops stay scripted
@@ -160,6 +175,7 @@ while IFS=$'\t' read -r num branch url mid; do
   fi
   CUR_PR=""; rm -f "$CUR_FILE"
   notify_reviewers "$num"
+  wait_pending_push "$wt"
   release_worktree "$num"
   n=$((n + 1))
 done <<<"$CANDS"
