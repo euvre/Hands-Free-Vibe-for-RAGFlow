@@ -267,6 +267,13 @@ publish_verdict() { # <num> <sha>
       *)    echo "(audit verdict: $verdict; detail body was empty)" > "$body_file" ;;
     esac
   fi
+  # Verification screenshots: the agent references them from the verdict body
+  # as ![alt](shots/<name>); upload to the fork's pr-assets release and rewrite
+  # to permanent URLs so they render INLINE in the comment — same machinery as
+  # the issue line's delivery (failures degrade to text, never a dead path).
+  if [[ -d "$AUDIT_ROOT/pr-$num/shots" ]]; then
+    bash "$DIR/issues/issue-gh-shots.sh" "$body_file" "$AUDIT_ROOT/pr-$num/shots" "audit-$num" >>"$LOG_DIR/daemon.log" 2>&1 || true
+  fi
   # GitHub writes go to the outbox — gh-recorder (1-min timer) drains them.
   # Local enqueue is practically infallible, so the verdict stamps as published
   # immediately; the recorder retries with backoff until the comment lands.
