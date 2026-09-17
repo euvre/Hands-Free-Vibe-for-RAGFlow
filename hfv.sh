@@ -225,14 +225,16 @@ pr_stage() { # pr_stage <review|rebase|audit|ci> <pr-num>
           echo "pr-$action line busy (its lock is held — often just an LLM retry wait). Wait, or 'hfv pr unlock $action' / 'hfv pr abandon $action'." >&2; exit 1
         fi
       fi
-      echo "running $action stage for PR #$sub; watch from another terminal with: hfv follow $action"
+      mlog="$LOG_DIR/manual-$action-$sub-$(date +%Y%m%d-%H%M%S).log"
       if [[ "$action" == "audit" ]]; then
-        bash "$DIR/lines/pr-audit-line.sh" --single "$sub"
+        setsid nohup bash "$DIR/lines/pr-audit-line.sh" --single "$sub" >>"$mlog" 2>&1 </dev/null &
       elif [[ "$action" == "ci" ]]; then
-        bash "$DIR/lines/pr-ci-line.sh" --single "$sub"
+        setsid nohup bash "$DIR/lines/pr-ci-line.sh" --single "$sub" >>"$mlog" 2>&1 </dev/null &
       else
-        bash "$DIR/lines/pr-follow.sh" "$action" "$sub"
+        setsid nohup bash "$DIR/lines/pr-follow.sh" "$action" "$sub" >>"$mlog" 2>&1 </dev/null &
       fi
+      echo "started PR #$sub $action stage in background (pid $!)"
+      echo "trigger log: $mlog — watch the run with: hfv follow $action"
       ;;
   esac
 }
@@ -430,7 +432,7 @@ case "${1:-help}" in
     cp "$SPEC" "$FEAT_DIR/current-feature-$inst.md"
     echo "$SPEC" > "$FEAT_DIR/current-feature-$inst.source"
     cp "$SPEC" "$FEAT_DIR/feature-$(date +%Y%m%d-%H%M%S)-i$inst.md"
-    systemctl --user start "cline-feishu-feat@$inst.service"
+    systemctl --user start --no-block "cline-feishu-feat@$inst.service"
     echo "feat run triggered with spec: $SPEC"
     echo "watch with: hfv issue follow"
     ;;
@@ -850,7 +852,7 @@ PYEOF
     fi
     ;;
   summarize)
-    systemctl --user start "$UNIT_SUMMARIZE_SVC"
+    systemctl --user start --no-block "$UNIT_SUMMARIZE_SVC"
     echo "summarize sweep triggered"
     ;;
   prompt)
