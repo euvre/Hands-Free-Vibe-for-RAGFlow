@@ -24,6 +24,11 @@ HOME = os.path.expanduser("~")
 MARKER = os.path.join(HOME, "hands-free-vibe", ".model-profile")
 
 # NOTE kimi profile: native image input (agent views screenshots itself).
+# NOTE kimi in containers: cline has no base-url flag, so the openai-compatible
+#   provider's baseUrl must live in the golden image's baked
+#   ~/.cline/data/settings/providers.json (copy the host's block — without it
+#   the run hits api.openai.com and the kimi key is rejected there). Verified
+#   2026-09-17 after a golden rebuild dropped it.
 # NOTE glm profile: text-only — the GLM coding endpoint rejects image content
 # ("messages.content.type 参数非法"); screenshots are transcribed to text by
 # issue-vision.py in the pre-pass instead.
