@@ -23,7 +23,10 @@ if [[ -z "${HFV_EXEC_SNAPSHOT:-}" ]]; then
   export HFV_EXEC_SNAPSHOT
   exec bash "$HFV_EXEC_SNAPSHOT" "$@"
 fi
-trap 'rm -f "$HFV_EXEC_SNAPSHOT" "${CUR_FILE:-}"' EXIT
+# The EXIT trap and the status marker are installed AFTER the lock below: a
+# lock-busy no-op exit must not remove the ACTIVE run's .current-feat marker
+# (the audit line learned this first; same trap shape now everywhere).
+: "${HFV_EXEC_SNAPSHOT:?}"
 
 DAEMON_DIR="$HOME/hands-free-vibe"
 LOG_DIR="$DAEMON_DIR/logs"
@@ -63,12 +66,16 @@ mkdir -p "$LOG_DIR"
 TS="$(date +%Y%m%d-%H%M%S)"
 RUN_LOG="$LOG_DIR/run-feat-$TS.log"
 
-basename "$FEAT_SPEC" > "$CUR_FILE"
 exec 9>"$LOCK_FILE"
 if ! flock -n 9; then
   echo "[$TS] previous run still active, skipping feat run" >> "$LOG_DIR/daemon.log"
+  rm -f "$HFV_EXEC_SNAPSHOT"   # busy-exit cleans its own snapshot; no trap yet
   exit 0
 fi
+# Marker write and EXIT trap only once the lock is held: a lock-busy no-op
+# exit must not touch the ACTIVE run's marker file.
+basename "$FEAT_SPEC" > "$CUR_FILE"
+trap 'rm -f "$HFV_EXEC_SNAPSHOT" "${CUR_FILE:-}"' EXIT
 
 # new task starts: reclaim MCP servers leaked by previous (finished) runs
 bash "$DAEMON_DIR/framework/mcp-cleanup.sh"
