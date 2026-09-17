@@ -127,6 +127,27 @@ else
   [[ -f "$HOME/.config/systemd/user/cline-feishu-triage@.service" ]] && pass "units installed" || bad "units missing"
 fi
 
+# ------------------------------------------------------ git exclude ---------
+step "git exclude (runtime symlink never staged)"
+# The framework symlinks ragflow_deps/nltk_data (an absolute host path) into
+# task worktrees to provide runtime assets; the repo's `nltk_data/` gitignore
+# covers only real directories, so `git add -A` sweeps the symlink into
+# commits. One entry in the clone's shared info/exclude covers every worktree.
+RAGFLOW_MAIN_VAL="$(source "$DIR/config.sh" >/dev/null 2>&1; printf '%s' "$RAGFLOW_MAIN")"
+if [[ -n "$RAGFLOW_MAIN_VAL" && -d "$RAGFLOW_MAIN_VAL/.git" ]]; then
+  EX="$RAGFLOW_MAIN_VAL/.git/info/exclude"
+  if grep -q '^/ragflow_deps/nltk_data$' "$EX" 2>/dev/null; then
+    pass "info/exclude covers /ragflow_deps/nltk_data"
+  elif [[ $CHECK_ONLY -eq 0 ]]; then
+    printf '\n# hfv: framework-created runtime symlink; never stage it\n/ragflow_deps/nltk_data\n' >> "$EX" \
+      && pass "added /ragflow_deps/nltk_data to $EX" || note "could not write $EX"
+  else
+    note "$EX missing the /ragflow_deps/nltk_data entry"
+  fi
+else
+  note "RAGFLOW_MAIN unset or not a clone yet — add /ragflow_deps/nltk_data to <clone>/.git/info/exclude later"
+fi
+
 # ------------------------------------------------------------- summary ------
 say
 say "== summary: ok=$ok warn=$warn fail=$fail"

@@ -54,6 +54,11 @@ log() { echo "[$TS] mid=${MID:-} $*" >> "$LOG"; }
 
 # --- 0) snapshot backup: index (incl. untracked after add -A) → tree → commit → ref
 git add -A
+# Never stage the framework-created runtime symlink: the repo's gitignore
+# covers nltk_data/ as a DIRECTORY only, so git add -A sweeps the symlink
+# (an absolute host path) into the commit. The clone's info/exclude covers it
+# too; this is the belt-and-braces for anything already tracked.
+git rm --cached --ignore-unmatch -q ragflow_deps/nltk_data 2>/dev/null || true
 # Guard: the task-worktree pool lives under $RAGFLOW_MAIN/wt/, inside the repo —
 # a delivery staged at the wrong directory would sweep it into the commit.
 # A delivery containing wt/ paths is always garbage: abort, never push it.
