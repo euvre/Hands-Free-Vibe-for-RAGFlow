@@ -67,29 +67,22 @@ Issue line:
                                cursor so the next pass re-scans the full window
   hfv issue window [days]      show / set the issue sliding window (1-30 days)
 
-PR line (manual single-shot; auto passes run on the pr timers):
+PR line (manual single-shot; auto passes run on the pr timers;
+         watch a running stage with: hfv follow <line> [inst]):
   hfv pr review <pr-num>       run the comment-review stage on one PR now
-  hfv pr review log            last 40 lines of the latest review-stage log
-  hfv pr review follow         tail -f the latest review-stage log
   hfv pr rebase <pr-num>       run the conflict-rebase on one PR now
                                (conflict-free branches are handled by a ~15s
                                script, no LLM; only real conflicts launch one)
-  hfv pr rebase log            last 40 lines of the latest rebase-stage log
   hfv pr ci <pr-num>           run the CI-failure fix stage on one PR now
-  hfv pr ci log                last 40 lines of the latest ci-stage log
-  hfv pr ci follow             tail -f the latest ci-stage log
-  hfv pr rebase follow         tail -f the latest rebase-stage log
   hfv pr audit <pr-num>       WE review someone else's PR as the reviewer:
                                full code-quality audit + main-task-grade e2e
                                test in this PR's own on-demand e2e group
                                (hfv-svc-pr<N>, up for the round, down after),
                                then reply on the PR (LGTM when clean); the
                                auto line also picks up PRs review-requested to us
-  hfv pr audit log            last 40 lines of the latest audit-stage log
   HFV_AUDIT_DRY_RUN=1 hfv pr audit <pr-num>
                               dry-run: full audit incl. the Chinese operator
                                note, but nothing published/stamped/DM'd
-  hfv pr audit follow         tail -f the latest audit-stage log
   hfv pr audit up <worktree>  bring the on-demand audit cluster (hfv-svc-audit)
                                up against a worktree (worker mount is swapped;
                                service volumes/caches persist across PRs)
@@ -203,17 +196,11 @@ any_pr_active() {
   return 1
 }
 
-pr_stage() { # pr_stage <review|rebase|audit> [log|follow|<pr-num>]
+pr_stage() { # pr_stage <review|rebase|audit|ci> <pr-num>
   local action="$1" sub="${2:-}"
   case "$sub" in
-    log)
-      f="$(latest_stage_log "$action")"; [[ -n "$f" ]] && tail -n 40 "$f" || echo "no PR $action logs yet"
-      ;;
-    follow)
-      follow_log "$action" "PR $action"
-      ;;
     ''|*[!0-9]*)
-      echo "usage: hfv pr $action <pr-num> | log | follow" >&2; exit 1
+      echo "usage: hfv pr $action <pr-num>  (watch a running stage: hfv follow $action)" >&2; exit 1
       ;;
     *)
       # Serialize on the line's OWN lock only: the exec'd script takes it
@@ -238,7 +225,7 @@ pr_stage() { # pr_stage <review|rebase|audit> [log|follow|<pr-num>]
           echo "pr-$action line busy (its lock is held — often just an LLM retry wait). Wait, or 'hfv pr unlock $action' / 'hfv pr abandon $action'." >&2; exit 1
         fi
       fi
-      echo "running $action stage for PR #$sub; watch from another terminal with: hfv pr $action follow"
+      echo "running $action stage for PR #$sub; watch from another terminal with: hfv follow $action"
       if [[ "$action" == "audit" ]]; then
         bash "$DIR/lines/pr-audit-line.sh" --single "$sub"
       elif [[ "$action" == "ci" ]]; then
