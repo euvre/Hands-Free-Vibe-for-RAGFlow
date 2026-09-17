@@ -83,6 +83,9 @@ if [[ "$MODE" == "local" ]]; then
     log "local: pre-check passed, no relaunch"
   else
     log "local: pre-check failed — relaunching via ragflow-up.sh"
+    # never let wait_status read a stale all= line from the image layer or a
+    # crashed run (ragflow-up.sh ≥3.5 also resets it at launch; belt+braces)
+    rm -f "$STATUS_FILE"
     bash "$DIR/framework/ragflow-up.sh" >>"$UPLOG" 2>&1 || true
     res="$(wait_status cat "$STATUS_FILE")"
     verdict="${res%% *}"; secs="${res##* }"
@@ -90,7 +93,19 @@ if [[ "$MODE" == "local" ]]; then
       READY)
         svc_line="READY — relaunched by env-up.sh at $(date +%H:%M:%S), all=READY after ~${secs}s" ;;
       *)
-        svc_line="NOT-READY ($verdict after ~${secs}s) — inspect /tmp/ragflow-backend.log, /tmp/ragflow-go.log, /tmp/ragflow-web.log ONCE; if unrecoverable, take the task file's failure path. Do NOT retry the launch in a loop (restarts race for ports)" ;;
+        # py+web READY without the go gateway still fully serves the browser
+        # path (web proxies /api to py by default): degrade to PARTIAL, not
+        # NOT-READY, so the agent does not abandon the browser tier over a
+        # go-only outage.
+        last="$(grep '^py=' "$STATUS_FILE" 2>/dev/null | tail -1 || true)"
+        py_s="$(grep -o 'py=[A-Z]*' <<<"$last" | head -1 | cut -d= -f2)"
+        go_s="$(grep -o 'go=[A-Z]*' <<<"$last" | head -1 | cut -d= -f2)"
+        web_s="$(grep -o 'web=[A-Z]*' <<<"$last" | head -1 | cut -d= -f2)"
+        if [[ "$py_s" == READY && "$web_s" == READY ]]; then
+          svc_line="PARTIAL — py api 9380 + web 9222 READY (browser path fully usable: web proxies /api to py by default); go api 9384 still ${go_s:-PENDING} after ~${secs}s — go-gateway-specific surface is out of scope this round. Do NOT retry the launch in a loop"
+        else
+          svc_line="NOT-READY ($verdict after ~${secs}s) — inspect /tmp/ragflow-backend.log, /tmp/ragflow-go.log, /tmp/ragflow-web.log ONCE; if unrecoverable, take the task file's failure path. Do NOT retry the launch in a loop (restarts race for ports)"
+        fi ;;
     esac
   fi
   # Session keep-alive on the browser MCP's own profile (READY services only):
@@ -98,7 +113,7 @@ if [[ "$MODE" == "local" ]]; then
   # refreshed through the sanctioned form path (browser-login.py — script-driven
   # form submit, no API login, no token planting).
   login_line="not attempted (services not READY)"
-  if [[ "$svc_line" == READY* ]]; then
+  if [[ "$svc_line" == READY* || "$svc_line" == PARTIAL* ]]; then
     login_line="$(bash "$DIR/framework/browser-ensure-login.sh" http://127.0.0.1:9222 2>/dev/null || true)"
   fi
   {

@@ -5,7 +5,7 @@
       "args": [
         "-e", "/usr/bin/google-chrome",
         "--headless",
-        "--no-sandbox",
+        "--chrome-arg=--no-sandbox",
         "--userDataDir", "/home/inf/.cache/chrome-devtools-mcp/profile",
         "--logFile", "/home/inf/.cache/chrome-devtools-mcp/mcp-server.log"
       ],

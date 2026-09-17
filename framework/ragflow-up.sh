@@ -183,6 +183,12 @@ if [[ -f "$WATCH_PIDFILE" ]]; then
   rm -f "$WATCH_PIDFILE"
 fi
 
+# --- 3.5) reset the readiness file BEFORE the new watcher starts: without
+# this, a stale all=READY/all=TIMEOUT (baked into the golden image layer or
+# left by a crashed run) gets read by env-up.sh's wait_status in the first
+# seconds and misreported as THIS launch's outcome.
+printf 'py=PENDING go=PENDING web=PENDING elapsed=0s\n' > "$STATUS"
+
 # --- 4) launch all stacks detached ------------------------------------------
 cd "$REPO"
 # HFV_VENV overrides the venv path (default .venv). The all-in-one task

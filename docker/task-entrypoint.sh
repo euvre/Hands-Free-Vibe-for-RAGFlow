@@ -22,6 +22,18 @@ export HOME=/home/inf
 REPO="${RAGFLOW_MAIN:-/home/inf/code/ragflow4}"
 
 mkdir -p /var/log/hfv-task
+
+# Wipe the ragflow runtime state baked into the image by the golden bootstrap
+# commit: /tmp/ragflow-ready.status, the watcher pidfile and the service logs
+# are ROOT-owned there, while the runner drops to the unprivileged user — in
+# sticky /tmp it can neither delete nor overwrite root's files, so the
+# readiness watcher fails silently and the ragflow-up.sh launches die on the
+# log redirects (every env-up then reads a stale all=TIMEOUT from the image
+# layer and reports NOT-READY before anything has even started).
+rm -f /tmp/ragflow-ready.status /tmp/ragflow-watch.pid \
+      /tmp/ragflow-backend.log /tmp/ragflow-go.log /tmp/ragflow-web.log \
+      /tmp/ragflow-up-manual.log
+
 /usr/bin/supervisord -c /etc/supervisor/supervisord.conf >>/var/log/hfv-task/supervisord.log 2>&1 &
 
 # host-shared stateless services onto container-localhost (same trick as the
