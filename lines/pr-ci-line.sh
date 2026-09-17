@@ -307,6 +307,7 @@ while IFS=$'\t' read -r num branch url mid fails scope; do
   sed -e "s|__CI_FAILS__|$fails|g" "$TMPL" > "$TMPL_CI"
   # The LLM stage runs in one throwaway golden container. --creds: read access
   # to GitHub (check runs / logs) — the push is owned by this line (below).
+  LLM_WAIT_FLAG="$DIR/logs/llm-wait/$(basename "$LOCK_FILE" .lock)" \
   HFV_SLOT="pr-ci-$num" PR_TMPL="$TMPL_CI" PR_TAG="ci" PR_NUM="$num" PR_BRANCH="$branch" PR_URL="$url" PR_MID="$mid" \
   PR_TIMEOUT=1800 PR_PREFLIGHT=0 \
   GH_TOKEN="$(gh auth token 2>/dev/null || true)" \

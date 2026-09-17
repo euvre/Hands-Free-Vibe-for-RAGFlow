@@ -149,6 +149,7 @@ while IFS=$'\t' read -r num branch url mid; do
   # The LLM stage runs in one throwaway golden container off the frozen base
   # (model providers baked in, services in-container). --creds: read access to
   # GitHub (comment inventory) — pushes/comments are owned by the line above.
+  LLM_WAIT_FLAG="$DIR/logs/llm-wait/$(basename "$LOCK_FILE" .lock)" \
   HFV_SLOT="pr-review-$num" PR_TMPL="$TMPL" PR_TAG="review" PR_NUM="$num" PR_BRANCH="$branch" PR_URL="$url" PR_MID="$mid" \
   GH_TOKEN="$(gh auth token 2>/dev/null || true)" \
     bash "$DIR/lines/run-container.sh" --wt "$wt" --creds run-pr-main.sh

@@ -158,6 +158,14 @@ $ENV_STATUS_SECTION"
     # daemon.log and the run log, so it never reads as an automatic retry.
     local flag="$HFV_UNLOCK_FLAG_DIR/pr-unlock-$tag.flag"
     local slept=0 manual=0 fts
+    # parked-on-rate-limit marker for `hfv model`: while every active run is
+    # just sleeping out an LLM quota/transient wait, switching the profile is
+    # allowed (parked runs keep retrying with their in-memory model). Written
+    # for the wait's duration only; a killed runner may leak it — best-effort.
+    if [[ -n "${LLM_WAIT_FLAG:-}" && ( "$kind" == quota || "$kind" == transient ) ]]; then
+      mkdir -p "$(dirname "$LLM_WAIT_FLAG")"
+      printf '%s\n' "$kind $(date +%s) pr=$num" > "$LLM_WAIT_FLAG"
+    fi
     while (( slept < ws )); do
       local chunk=$(( ws - slept )); (( chunk > 15 )) && chunk=15
       sleep "$chunk"; slept=$(( slept + chunk ))
@@ -167,6 +175,7 @@ $ENV_STATUS_SECTION"
       if (( $(date +%s) - fts <= 300 )); then manual=1; break; fi
       pr_log "pr=$num: stale unlock flag ignored (age $(($(date +%s) - fts))s)"
     done
+    [[ -n "${LLM_WAIT_FLAG:-}" ]] && rm -f "$LLM_WAIT_FLAG"
     if (( manual )); then
       manual_note=" (manual-unlock)"
       pr_log "pr=$num: MANUAL UNLOCK — auto-wait cut at ${slept}s/${ws}s, retrying NOW, retry budget NOT consumed"

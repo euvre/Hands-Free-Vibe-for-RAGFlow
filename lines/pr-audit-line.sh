@@ -314,6 +314,7 @@ while IFS=$'\t' read -r num sha url; do
   # stays a prompt-level rule exactly as it was on the host. The container does
   # its own pre-flight (env-up local) + unit-tier pre-run and injects the
   # status section itself. HFV_SLOT namespaces its per-run files.
+  LLM_WAIT_FLAG="$DIR/logs/llm-wait/$(basename "$LOCK_FILE" .lock)" \
   HFV_SLOT="pr-audit-$num" PR_TMPL="$TMPL" PR_TAG="audit" PR_NUM="$num" PR_BRANCH="$branch" PR_URL="$url" \
   GH_TOKEN="$(gh auth token 2>/dev/null || true)" \
     bash "$DIR/lines/run-container.sh" --wt "$wt" --creds run-pr-main.sh

@@ -312,7 +312,13 @@ print(hit)
     break
   fi
   echo "[$TS] $kind failure (attempt $attempt exit=$rc), waiting ${wait_s}s before retry (wait budget ${waited}/${max_wait}s; retry waiting does not consume the per-attempt timeout)" >> "$LOG_DIR/daemon.log"
+  # parked-on-rate-limit marker for `hfv model` (see pr-llm-run.sh)
+  if [[ "$kind" == quota || "$kind" == transient ]]; then
+    mkdir -p "$DAEMON_DIR/logs/llm-wait"
+    printf '%s\n' "$kind $(date +%s) slot=${HFV_SLOT:-host}" > "$DAEMON_DIR/logs/llm-wait/$(basename "$LOCK_FILE" .lock)"
+  fi
   sleep "$wait_s"
+  rm -f "$DAEMON_DIR/logs/llm-wait/$(basename "$LOCK_FILE" .lock)"
   case "$kind" in
     quota)     quota_waited=$((quota_waited + wait_s)) ;;
     transient) transient_waited=$((transient_waited + wait_s)) ;;

@@ -124,7 +124,7 @@ if [[ "$CREDS" == 1 ]]; then
 fi
 # PR-stage env passthrough (run-pr-main.sh reads these)
 ENV_ARGS=()
-for v in PR_TMPL PR_TAG PR_NUM PR_BRANCH PR_URL PR_MID PR_TIMEOUT PR_PREFLIGHT PR_PRE_SECTION; do
+for v in PR_TMPL PR_TAG PR_NUM PR_BRANCH PR_URL PR_MID PR_TIMEOUT PR_PREFLIGHT PR_PRE_SECTION LLM_WAIT_FLAG; do
   [[ -n "${!v:-}" ]] && ENV_ARGS+=(-e "$v=${!v}")
 done
 

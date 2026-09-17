@@ -196,6 +196,30 @@ any_pr_active() {
   return 1
 }
 
+# Every active run is parked in an LLM quota/transient wait? (markers are
+# written by the runners' wait loops to logs/llm-wait/<lock-name> for exactly
+# the wait's duration). Used by `hfv model`: a parked run is asleep, so
+# switching the profile is safe; a WORKING run keeps the refusal.
+all_active_llm_parked() {
+  local f name c
+  for f in "$DIR"/run.lock "$DIR"/run-s*.lock "$DIR"/run-feat-*.lock \
+           "$DIR"/pr-follow-*.lock "$DIR"/pr-rebase-*.lock "$DIR"/pr-review-*.lock "$DIR"/pr-audit-*.lock "$DIR"/pr-ci-*.lock; do
+    [[ -e "$f" ]] || continue
+    if ! flock -n "$f" -c true 2>/dev/null; then
+      name="$(basename "$f" .lock)"
+      [[ -f "$DIR/logs/llm-wait/$name" ]] || return 1
+    fi
+  done
+  for c in $(docker ps --format '{{.Names}}' --filter 'name=hfv-task-' 2>/dev/null); do
+    case "$c" in
+      *-spr-*) ;;                                    # PR line container — its line lock above carries the flag
+      *-s[0-9]*) [[ -f "$DIR/logs/llm-wait/run-${c##*-}" ]] || return 1 ;;  # issue slot container
+      *) return 1 ;;                                 # legacy/unnamed container — treat as working
+    esac
+  done
+  return 0
+}
+
 pr_stage() { # pr_stage <review|rebase|audit|ci> <pr-num>
   local action="$1" sub="${2:-}"
   case "$sub" in
@@ -843,8 +867,12 @@ PYEOF
       python3 "$DIR/tools/model-profile.py" show
     elif [[ $# -eq 1 && ( "$1" == "kimi" || "$1" == "glm" ) ]]; then
       if any_active || any_pr_active; then
-        echo "a run is active; model switch refused (config would change mid-run on the issue or PR line). Wait for it to finish or 'hfv stop'."
-        exit 1
+        if all_active_llm_parked; then
+          echo "note: every active run is parked in an LLM rate-limit wait — switching now; parked runs keep retrying with their in-memory model, new runs get '$1'"
+        else
+          echo "a run is active; model switch refused (config would change mid-run on the issue or PR line). Wait for it to finish or 'hfv stop'."
+          exit 1
+        fi
       fi
       python3 "$DIR/tools/model-profile.py" apply "$1"
     else
