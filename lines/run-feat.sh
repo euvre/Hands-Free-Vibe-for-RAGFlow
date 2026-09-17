@@ -39,7 +39,7 @@ LOCK_FILE="$DAEMON_DIR/run-feat-$FEAT_INST.lock"
 FEAT_SPEC="$DAEMON_DIR/feat/current-feature-$FEAT_INST.md"
 FEAT_DELIVER="$DAEMON_DIR/feat/deliver-$FEAT_INST"
 CUR_FILE="$DAEMON_DIR/.current-feat-$FEAT_INST"
-TASK_FILE="$DAEMON_DIR/prompts/feat-task.md"
+TASK_FILE="$(resolve_prompt feat-task)"
 WORKDIR="$RAGFLOW_MAIN"
 # Hard cap per attempt (2h). Bounds pathological hangs of a single attempt;
 # retries start a fresh attempt with a fresh full budget.

@@ -65,3 +65,19 @@ unset _RAGFLOW_MAIN_ENV
 HFV_SLOT="${HFV_SLOT:-}"
 HFV_SUF="${HFV_SLOT:+-s$HFV_SLOT}"
 RAGFLOW_HOST_REPO="$RAGFLOW_MAIN"
+
+# ---- 提示词多版本 ----
+# prompts/<base>.md 是默认版本；prompts/<base>@<variant>.md 是变体。
+# hfv.conf 用 PROMPT_VARIANT_<BASE大写、连字符转下划线> 选定变体
+# （如 PROMPT_VARIANT_PR_AUDIT_TASK=dual-check）；未设置或文件不存在时回落默认。
+# 命令行侧：hfv prompt list / show / use。
+resolve_prompt() { # <base> → 打印该提示词当前应使用的文件（绝对路径）
+  local base="$1" key var
+  key="PROMPT_VARIANT_$(tr 'a-z-' 'A-Z_' <<<"$base")"
+  var="${!key:-}"
+  if [[ -n "$var" && -f "$HFV_DIR/prompts/$base@$var.md" ]]; then
+    printf '%s' "$HFV_DIR/prompts/$base@$var.md"
+  else
+    printf '%s' "$HFV_DIR/prompts/$base.md"
+  fi
+}

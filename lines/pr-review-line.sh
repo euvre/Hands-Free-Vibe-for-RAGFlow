@@ -44,7 +44,7 @@ CUR_FILE="$DIR/.current-review-$INST"
 source "$DIR/config.sh"
 CLONE="$RAGFLOW_MAIN"
 WTROOT="$CLONE/wt"
-TMPL="$DIR/prompts/pr-review-task.md"
+TMPL="$(resolve_prompt pr-review-task)"
 DM="$DIR/tools/feishu-dm.py"
 QUOTA_PATTERN='usage limit|billing cycle|quota.{0,40}(refresh|exceed|exhaust)|insufficient.{0,20}quota|使用上限|限额.{0,20}重置|额度.{0,20}(耗尽|不足)'
 TRANSIENT_PATTERN='rate.?limit|too many requests|\b429\b|overloaded|temporarily unavailable|service unavailable|\b50[23]\b|try again later|high load|capacity exceeded|out of capacity|timed out|负载|限流|稍后重试'
@@ -149,7 +149,7 @@ while IFS=$'\t' read -r num branch url mid; do
   # The LLM stage runs in one throwaway golden container off the frozen base
   # (model providers baked in, services in-container). --creds: read access to
   # GitHub (comment inventory) — pushes/comments are owned by the line above.
-  HFV_SLOT="pr-review-$num" PR_TMPL="pr-review-task.md" PR_TAG="review" PR_NUM="$num" PR_BRANCH="$branch" PR_URL="$url" PR_MID="$mid" \
+  HFV_SLOT="pr-review-$num" PR_TMPL="$TMPL" PR_TAG="review" PR_NUM="$num" PR_BRANCH="$branch" PR_URL="$url" PR_MID="$mid" \
   GH_TOKEN="$(gh auth token 2>/dev/null || true)" \
     bash "$DIR/lines/run-container.sh" --wt "$wt" --creds run-pr-main.sh
   rc=$?

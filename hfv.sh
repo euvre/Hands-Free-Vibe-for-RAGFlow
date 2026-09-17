@@ -148,6 +148,10 @@ Observation & config:
                                  stdin so it never lands in the shell history;
                                  '--force' skips the provider shape guardrail)
   hfv key remove <kimi|glm> <key>
+  hfv prompt list              prompt files with their variants and the active pick
+  hfv prompt show <base>[@v]   print a prompt (default: the active version)
+  hfv prompt use <base>[@v]    select a variant (writes PROMPT_VARIANT_* into
+                                 hfv.conf; bare <base> falls back to the default)
                                remove a key by exact value (or '--stdin')
   hfv key rotate <kimi|glm> [n]
                                left-rotate the key list by n (default 1: the
@@ -861,6 +865,61 @@ PYEOF
   summarize)
     systemctl --user start "$UNIT_SUMMARIZE_SVC"
     echo "summarize sweep triggered"
+    ;;
+  prompt)
+    # Prompt variants: prompts/<base>.md is the default, prompts/<base>@<v>.md
+    # a variant. Selection lives in hfv.conf as PROMPT_VARIANT_<BASE> (uppercase,
+    # dashes→underscores); the lines resolve through config.sh's resolve_prompt.
+    shift
+    subcmd="${1:-list}"; [[ $# -gt 0 ]] && shift
+    CONF="$DIR/hfv.conf"
+    case "$subcmd" in
+      list)
+        printf '%-16s %-14s %s\n' PROMPT ACTIVE VARIANTS
+        for f in "$DIR"/prompts/*.md; do
+          base="$(basename "$f" .md)"
+          [[ "$base" == *@* ]] && continue
+          vars="$(ls "$DIR/prompts/$base"@*.md 2>/dev/null | sed 's/.*@//; s/\.md$//' | paste -sd, -)"
+          key="PROMPT_VARIANT_$(tr 'a-z-' 'A-Z_' <<<"$base")"
+          cur="$(grep -oP "^${key}=\K[^#[:space:]]+" "$CONF" 2>/dev/null || true)"
+          [[ -n "$cur" && ! -f "$DIR/prompts/$base@$cur.md" ]] && cur=""   # dangling pick → base
+          printf '%-16s %-14s %s\n' "$base" "${cur:-base}" "${vars:--}"
+        done
+        ;;
+      show|use)
+        arg="${1:-}"
+        [[ -n "$arg" ]] || { echo "usage: hfv prompt $subcmd <base>[@variant]"; exit 1; }
+        base="${arg%%@*}"; var=""; [[ "$arg" == *@* ]] && var="${arg#*@}"
+        key="PROMPT_VARIANT_$(tr 'a-z-' 'A-Z_' <<<"$base")"
+        [[ -f "$DIR/prompts/$base.md" ]] || { echo "unknown prompt base: $base (see: hfv prompt list)"; exit 1; }
+        if [[ "$subcmd" == show ]]; then
+          if [[ -n "$var" ]]; then
+            f="$DIR/prompts/$base@$var.md"
+          else
+            cur="$(grep -oP "^${key}=\K[^#[:space:]]+" "$CONF" 2>/dev/null || true)"
+            f="$DIR/prompts/$base.md"
+            [[ -n "$cur" && -f "$DIR/prompts/$base@$cur.md" ]] && f="$DIR/prompts/$base@$cur.md"
+          fi
+          [[ -f "$f" ]] || { echo "no such prompt file: $f"; exit 1; }
+          cat "$f"
+        else
+          if [[ -z "$var" ]]; then
+            sed -i "/^${key}=/d" "$CONF"
+            echo "$base -> base (默认版本)"
+          else
+            [[ -f "$DIR/prompts/$base@$var.md" ]] || { echo "no such variant: $base@$var (have: $(ls "$DIR/prompts/$base"@*.md 2>/dev/null | sed 's/.*@//;s/\.md$//' | paste -sd, -))"; exit 1; }
+            if grep -q "^${key}=" "$CONF"; then
+              sed -i "s|^${key}=.*|${key}=${var}|" "$CONF"
+            else
+              printf '%s=%s  # 提示词变体（hfv prompt use 写入）\n' "$key" "$var" >> "$CONF"
+            fi
+            echo "$base -> $var"
+          fi
+        fi
+        ;;
+      *)
+        echo "usage: hfv prompt [list | show <base>[@v] | use <base>[@v]]" >&2; exit 1 ;;
+    esac
     ;;
   help|-h|--help)
     # Paged by default (the full help is 100+ lines); -F drops out immediately

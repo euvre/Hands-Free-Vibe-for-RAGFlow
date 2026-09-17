@@ -20,7 +20,7 @@ LOG_DIR="$DAEMON_DIR/logs"
 # Per-instance lock / issue file / deliver dir (HFV_SUF comes from config.sh;
 # empty on an unnumbered run → run.lock / current.json / deliver).
 LOCK_FILE="$DAEMON_DIR/run${HFV_SUF}.lock"
-TASK_FILE="$DAEMON_DIR/prompts/task.md"
+TASK_FILE="$(resolve_prompt task)"
 ISSUE_FILE="$DAEMON_DIR/issues/current${HFV_SUF}.json"
 WORKDIR="$RAGFLOW_MAIN"
 DELIVER_DIR="$DAEMON_DIR/deliver${HFV_SUF}"

@@ -51,7 +51,7 @@ for LOG in $(ls -1t "$LOG_DIR"/run-2*.log 2>/dev/null); do
     -t "$SUMMARIZE_SECONDS" \
     --auto-approve true \
     $MODEL_BASE -k "${API_KEYS[0]}" \
-    "$(printf '%s\n\n# digest\n%s' "$(cat "$DAEMON_DIR/prompts/summarize-task.md")" "$digest")" \
+    "$(printf '%s\n\n# digest\n%s' "$(cat "$(resolve_prompt summarize-task)")" "$digest")" \
     > "$SUM_LOG" 2>&1
   rc=$?
 

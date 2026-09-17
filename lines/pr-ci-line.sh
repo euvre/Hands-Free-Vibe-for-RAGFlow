@@ -43,7 +43,7 @@ CUR_FILE="$DIR/.current-ci-$INST"
 source "$DIR/config.sh"
 CLONE="$RAGFLOW_MAIN"
 WTROOT="$CLONE/wt"
-TMPL="$DIR/prompts/pr-ci-task.md"
+TMPL="$(resolve_prompt pr-ci-task)"
 
 mkdir -p "$LOG_DIR"
 log() { echo "[$(date +%Y%m%d-%H%M%S)] pr-ci-line: $*" >> "$LOG_DIR/daemon.log"; }
