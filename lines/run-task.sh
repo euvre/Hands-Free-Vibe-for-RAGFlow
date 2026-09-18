@@ -290,6 +290,16 @@ print(hit)
     kind=other; wait_s=$OTHER_RETRY_SECONDS; waited=$other_waited; max_wait=$OTHER_MAX_WAIT_SECONDS
   fi
 
+  # parked-on-rate-limit marker for `hfv ps` / `hfv model` (pr-llm-run.sh
+  # mirrors this): written as soon as a quota/transient failure is classified
+  # — BEFORE the rotation branch, so a run spinning through key rotation also
+  # reads as WAIT — and cleared only when the retry loop exits (success,
+  # hard cap, give-up), not between attempts.
+  if [[ "$kind" == quota || "$kind" == transient ]]; then
+    mkdir -p "$DAEMON_DIR/logs/llm-wait"
+    printf '%s\n' "$kind $(date +%s) slot=${HFV_SLOT:-host}" > "$DAEMON_DIR/logs/llm-wait/$(basename "$LOCK_FILE" .lock)"
+  fi
+
   # Multi-key rotation: quota → next key, retried NOW (no wait, no budget
   # consumed). Only once the whole list is exhausted does the billing-cycle
   # wait below engage (and that wait refreshes key #1's quota as well).
@@ -312,19 +322,17 @@ print(hit)
     break
   fi
   echo "[$TS] $kind failure (attempt $attempt exit=$rc), waiting ${wait_s}s before retry (wait budget ${waited}/${max_wait}s; retry waiting does not consume the per-attempt timeout)" >> "$LOG_DIR/daemon.log"
-  # parked-on-rate-limit marker for `hfv model` (see pr-llm-run.sh)
-  if [[ "$kind" == quota || "$kind" == transient ]]; then
-    mkdir -p "$DAEMON_DIR/logs/llm-wait"
-    printf '%s\n' "$kind $(date +%s) slot=${HFV_SLOT:-host}" > "$DAEMON_DIR/logs/llm-wait/$(basename "$LOCK_FILE" .lock)"
-  fi
   sleep "$wait_s"
-  rm -f "$DAEMON_DIR/logs/llm-wait/$(basename "$LOCK_FILE" .lock)"
   case "$kind" in
     quota)     quota_waited=$((quota_waited + wait_s)) ;;
     transient) transient_waited=$((transient_waited + wait_s)) ;;
     other)     other_waited=$((other_waited + wait_s)) ;;
   esac
 done
+
+# retry loop settled (success / hard cap / give-up): clear the rate-limit
+# marker written in the loop above
+rm -f "$DAEMON_DIR/logs/llm-wait/$(basename "$LOCK_FILE" .lock)"
 
 # success: the conversation is complete; drop the session marker so the NEXT
 # task on this issue cold-starts cleanly instead of carrying a finished

@@ -540,6 +540,14 @@ def emit(line, inst, lock, marker, log):
     state, task, age = "idle", "-", "-"
     if marker and os.path.exists(marker) and lock_held(lock):
         state = "RUN"
+        # A live run parked on an LLM rate-limit/transient wait is NOT making
+        # progress: logs/llm-wait/<lock basename> exists only while the retry
+        # sleep is in effect (run-task.sh writes it on the wait, removes it on
+        # retry). Surface that as WAIT instead of RUN so a stalled-looking
+        # long run reads correctly.
+        wm = os.path.join(LOG_DIR, "llm-wait", os.path.basename(lock).removesuffix(".lock"))
+        if os.path.exists(wm):
+            state = "WAIT"
         raw = open(marker, errors="replace").read().strip()
         parts = raw.split("\t")
         task = (parts[1] if len(parts) > 1 and parts[1] else parts[0])[:60] if raw else "-"
