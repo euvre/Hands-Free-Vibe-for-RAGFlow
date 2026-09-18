@@ -50,7 +50,7 @@ Run control:
   hfv stop                     stop the running task on ANY line (issue / feat / pr)
   hfv on | off                 enable / disable all six timers
   hfv scale <line> <n>         run <n> parallel instances of a task line
-                                 (issue|review|rebase|audit|ci|follow|feat|rerun;
+                                 (issue|review|rebase|audit|ci|follow|feat|repr;
                                  0 = line off)
 
 Task containers (one per run, hfv-task-<ts>):
@@ -71,7 +71,7 @@ Issue line:
 PR line (manual single-shot; auto passes run on the pr timers;
          watch a running stage with: hfv follow <line> [inst]):
   hfv pr review <pr-num>       run the comment-review stage on one PR now
-  hfv pr rerun <pr-num>        re-run the PR's original task with the full
+  hfv pr repr <pr-num>         re-run the PR's original task with the full
                                stack: real end-to-end verification, fixes for
                                what fails, then push + a report comment (for
                                PRs delivered without real e2e verification)
@@ -237,7 +237,7 @@ pr_stage() { # pr_stage <review|rebase|audit|ci> <pr-num>
       # pr-follow.sh). Other lines live in different clone/worktree
       # namespaces with their own locks — NOT conflicts; their timers
       # already run them concurrently with each other.
-      if [[ "$action" == "audit" || "$action" == "ci" || "$action" == "rerun" ]]; then
+      if [[ "$action" == "audit" || "$action" == "ci" || "$action" == "repr" ]]; then
         if ! flock -n "$DIR/pr-$action.lock" -c true 2>/dev/null; then
           echo "pr-$action line busy (its lock is held — often just an LLM retry wait). Wait, or 'hfv pr unlock $action' / 'hfv pr abandon $action'." >&2; exit 1
         fi
@@ -266,8 +266,8 @@ pr_stage() { # pr_stage <review|rebase|audit|ci> <pr-num>
         setsid nohup bash "$DIR/lines/pr-audit-line.sh" --single "$sub" >>"$mlog" 2>&1 </dev/null &
       elif [[ "$action" == "ci" ]]; then
         setsid nohup bash "$DIR/lines/pr-ci-line.sh" --single "$sub" >>"$mlog" 2>&1 </dev/null &
-      elif [[ "$action" == "rerun" ]]; then
-        setsid nohup bash "$DIR/lines/pr-rerun-line.sh" --single "$sub" >>"$mlog" 2>&1 </dev/null &
+      elif [[ "$action" == "repr" ]]; then
+        setsid nohup bash "$DIR/lines/pr-repr-line.sh" --single "$sub" >>"$mlog" 2>&1 </dev/null &
       else
         setsid nohup bash "$DIR/lines/pr-follow.sh" "$action" "$sub" >>"$mlog" 2>&1 </dev/null &
       fi
@@ -623,7 +623,7 @@ PYPS
     [[ "$line" == "--clean" ]] && line=""
     [[ "$inst" == "--clean" ]] && inst=1
     if [[ -z "$line" ]]; then
-      for m in "$DIR"/.current-issue-* "$DIR"/.current-review-* "$DIR"/.current-rebase-* "$DIR"/.current-audit-* "$DIR"/.current-ci-* "$DIR"/.current-feat-* "$DIR"/.current-rerun; do
+      for m in "$DIR"/.current-issue-* "$DIR"/.current-review-* "$DIR"/.current-rebase-* "$DIR"/.current-audit-* "$DIR"/.current-ci-* "$DIR"/.current-feat-* "$DIR"/.current-repr; do
         [[ -f "$m" ]] || continue
         base="$(basename "$m")"; line="${base#.current-}"; line="${line%-*}"; inst="${base##*-}"
         break
@@ -633,9 +633,9 @@ PYPS
     case "$line" in
       issue) f="$(ls -1t "$LOG_DIR"/run-[0-9]*-s"$inst".log 2>/dev/null | head -1)" ;;
       feat)  f="$(ls -1t "$LOG_DIR"/run-feat-*.log 2>/dev/null | head -1)" ;;
-      review|rebase|audit|ci|follow|rerun)
+      review|rebase|audit|ci|follow|repr)
              f="$(ls -1t "$LOG_DIR"/run-pr-"$line"-*.log 2>/dev/null | head -1)" ;;
-      *) echo "usage: hfv $subcmd [issue|review|rebase|audit|ci|follow|feat|rerun] [inst]" >&2; exit 1 ;;
+      *) echo "usage: hfv $subcmd [issue|review|rebase|audit|ci|follow|feat|repr] [inst]" >&2; exit 1 ;;
     esac
     if [[ -z "$f" ]]; then
       echo "no run log for $line $inst yet"
@@ -724,7 +724,7 @@ PYPS
     case "${1:-}" in
       review|rebase) pr_stage "$1" "${2:-}" ;;
       ci) pr_stage ci "${2:-}" ;;
-      rerun) pr_stage rerun "${2:-}" ;;
+      repr) pr_stage repr "${2:-}" ;;
       audit)
         case "${2:-}" in
           up)
@@ -738,7 +738,7 @@ PYPS
       unlock) pr_unlock "${2:-all}" ;;
       abandon) pr_abandon "${2:-all}" ;;
       restart) pr_restart "${2:-all}" ;;
-      *) echo "usage: hfv pr review|rebase|audit|ci|rerun <pr-num> | unlock [line] | abandon [line] | restart [line]" >&2; exit 1 ;;
+      *) echo "usage: hfv pr review|rebase|audit|ci|repr <pr-num> | unlock [line] | abandon [line] | restart [line]" >&2; exit 1 ;;
     esac
     ;;
   task)

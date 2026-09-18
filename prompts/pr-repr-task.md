@@ -1,4 +1,4 @@
-# PR re-run task (pr-rerun mode)
+# PR re-run task (pr-repr mode)
 
 Project path `__WORKDIR__` — a detached worktree of the PR branch `__BRANCH__` on the re-run line's clone. This PR was delivered by an earlier run whose verification was INCOMPLETE — typically it claims "end-to-end verification was not possible in this environment". That limitation no longer exists: this task's container carries the full service stack, pre-launched to READY before you started. **Your mission is to close the verification gap: re-verify the PR's original requirement end-to-end FOR REAL, fix whatever does not actually work, and report honestly.**
 
@@ -16,7 +16,7 @@ Project path `__WORKDIR__` — a detached worktree of the PR branch `__BRANCH__`
 - PR: `__PR_URL__` (target repo `__GITHUB_REPO__`, base `__PR_BASE__`)
 - PR branch: `__BRANCH__` (on fork remote `__FORK_REMOTE__`)
 - issue message_id: `__MID__` (may be empty)
-- **Original requirement material**: `__HFV_DIR__/scratch/pr-rerun-__PR_NUM__-origin.md` — the task the PR claims to implement (source text plus absolute paths of any image attachments; view the images, they often carry the exact reproduction). If this file is missing or empty, state it in the report and reconstruct the requirement from the PR description instead.
+- **Original requirement material**: `__HFV_DIR__/scratch/pr-repr-__PR_NUM__-origin.md` — the task the PR claims to implement (source text plus absolute paths of any image attachments; view the images, they often carry the exact reproduction). If this file is missing or empty, state it in the report and reconstruct the requirement from the PR description instead.
 
 ## 2. Understand before touching (mandatory)
 
@@ -42,7 +42,7 @@ The framework pre-flight section below reports the service stack state inside TH
 
 ## 5. Report (the deliverable the line publishes)
 
-Write the re-run report (English) to `__HFV_DIR__/scratch/pr-rerun-__PR_NUM__-report.md` — the framework posts it to the PR as a comment, chained so it publishes only after your commits actually land. Structure it:
+Write the re-run report (English) to `__HFV_DIR__/scratch/pr-repr-__PR_NUM__-report.md` — the framework posts it to the PR as a comment, chained so it publishes only after your commits actually land. Structure it:
 
 1. **Verdict** — verified / verified-after-fixes / partially-verifiable (boundary named).
 2. **What was verified and how** — per claim: the exact check, the evidence, the outcome. Screenshots referenced by path for UI flows.
