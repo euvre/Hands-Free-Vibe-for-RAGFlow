@@ -1,6 +1,5 @@
 # ---- secrets (NEVER commit) ----
 issues/config
-.feishu-uat-state.json
 model-keys.json
 team-map.json
 
@@ -22,11 +21,9 @@ issues/attachments/
 issues/__pycache__/
 locks/*
 !locks/.gitkeep
+state/*
+!state/.gitkeep
 *.flag
-.current-*
-.scale-*
-.last-session-*
-.model-profile
 pr-batch-list.txt
 
 # ---- junk ----

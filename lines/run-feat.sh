@@ -38,7 +38,7 @@ FEAT_INST="${HFV_FEAT_INST:-1}"
 LOCK_FILE="$DAEMON_DIR/locks/run-feat-$FEAT_INST.lock"
 FEAT_SPEC="$DAEMON_DIR/feat/current-feature-$FEAT_INST.md"
 FEAT_DELIVER="$DAEMON_DIR/feat/deliver-$FEAT_INST"
-CUR_FILE="$DAEMON_DIR/.current-feat-$FEAT_INST"
+CUR_FILE="$DAEMON_DIR/state/.current-feat-$FEAT_INST"
 TASK_FILE="$(resolve_prompt feat-task)"
 WORKDIR="$RAGFLOW_MAIN"
 # Hard cap per attempt (2h). Bounds pathological hangs of a single attempt;

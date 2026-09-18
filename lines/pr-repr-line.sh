@@ -27,7 +27,7 @@ source "$DIR/config.sh"
 CLONE="$RAGFLOW_MAIN"
 WTROOT="$CLONE/wt"
 LOCK_FILE="$DIR/locks/pr-repr.lock"
-CUR_FILE="$DIR/.current-repr"
+CUR_FILE="$DIR/state/.current-repr"
 TMPL="$(resolve_prompt pr-repr-task)"
 
 mkdir -p "$LOG_DIR" "$WTROOT" "$DIR/scratch"
@@ -56,7 +56,7 @@ if [[ "$state" != "OPEN" ]]; then
 fi
 
 # --- per-PR guard: another line actively on this PR? ------------------------
-for f in "$DIR"/.current-review-* "$DIR"/.current-ci-* "$DIR"/.current-rebase-* "$DIR"/.current-audit-*; do
+for f in "$DIR"/state/.current-review-* "$DIR"/state/.current-ci-* "$DIR"/state/.current-rebase-* "$DIR"/state/.current-audit-*; do
   [[ -e "$f" ]] || continue
   if [[ "$(cat "$f" 2>/dev/null)" == "$num" ]]; then
     log "pr=$num: $(basename "$f") holds this PR — refuse to run concurrently"

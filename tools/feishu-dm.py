@@ -46,7 +46,7 @@ UAT_CACHE = "/tmp/feishu-uat.cache"
 # never learns about OUR refreshes, so its storage.json goes stale; we keep
 # our own state file and prefer it over storage.json's (which still serves as
 # the recovery path whenever the user re-authorizes lark-mcp).
-UAT_STATE = os.path.join(DIR, ".feishu-uat-state.json")
+UAT_STATE = os.path.join(DIR, "state", ".feishu-uat-state.json")
 
 
 # ---------- user token channel ----------

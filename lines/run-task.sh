@@ -89,7 +89,7 @@ fi
 # not the ghost — must decide demotion)
 rm -f "$LOG_DIR/.rested${HFV_SUF}" "$LOG_DIR/.quota-dead${HFV_SUF}"
 # current-task marker for hfv ps (instance = HFV_SLOT, empty → 1)
-CUR_FILE="$DAEMON_DIR/.current-issue-${HFV_SLOT:-1}"
+CUR_FILE="$DAEMON_DIR/state/.current-issue-${HFV_SLOT:-1}"
 printf '%s\t%s\n' "$MID" "$SUMMARY" > "$CUR_FILE"
 trap 'rm -f "$CUR_FILE"' EXIT
 

@@ -39,10 +39,10 @@ LOG_DIR="$DIR/logs"
 # where (( (idx-1) % N == INST-1 )). Unnumbered run: INST=1, N=1 = all.
 INST="${HFV_INST:-1}"
 N_INST=1
-[[ -f "$DIR/.scale-review" ]] && N_INST="$(cat "$DIR/.scale-review" 2>/dev/null)"
+[[ -f "$DIR/state/.scale-review" ]] && N_INST="$(cat "$DIR/state/.scale-review" 2>/dev/null)"
 [[ "$N_INST" =~ ^[0-9]+$ && "$N_INST" -ge 1 ]] || N_INST=1
 LOCK_FILE="$DIR/locks/pr-review-$INST.lock"
-CUR_FILE="$DIR/.current-review-$INST"
+CUR_FILE="$DIR/state/.current-review-$INST"
 source "$DIR/config.sh"
 CLONE="$RAGFLOW_MAIN"
 WTROOT="$CLONE/wt"

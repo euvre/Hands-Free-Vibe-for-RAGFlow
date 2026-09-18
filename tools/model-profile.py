@@ -21,7 +21,7 @@ import os
 import sys
 
 HOME = os.path.expanduser("~")
-MARKER = os.path.join(HOME, "hands-free-vibe", ".model-profile")
+MARKER = os.path.join(HOME, "hands-free-vibe", "state", ".model-profile")
 
 # NOTE kimi profile: native image input (agent views screenshots itself).
 # NOTE kimi in containers: cline has no base-url flag, so the openai-compatible

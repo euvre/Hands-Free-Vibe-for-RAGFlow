@@ -444,7 +444,7 @@ case "${1:-help}" in
     FEAT_DIR="$DIR/feat"
     mkdir -p "$FEAT_DIR"
     nfeat=1
-    [[ -f "$DIR/.scale-feat" ]] && nfeat="$(cat "$DIR/.scale-feat" 2>/dev/null)"
+    [[ -f "$DIR/state/.scale-feat" ]] && nfeat="$(cat "$DIR/state/.scale-feat" 2>/dev/null)"
     [[ "$nfeat" =~ ^[0-9]+$ && "$nfeat" -ge 1 ]] || nfeat=1
     inst=""
     for (( i = 1; i <= nfeat; i++ )); do
@@ -497,7 +497,7 @@ case "${1:-help}" in
     if (( N > 0 && avail_mb / N < 10240 )); then
       echo "warning: ${avail_mb}MiB available over $N instance(s) — each wants a ~15-17G budget. Continuing anyway."
     fi
-    echo "$N" > "$DIR/.scale-$LINE"
+    echo "$N" > "$DIR/state/.scale-$LINE"
     for (( i = 1; i <= N; i++ )); do
       systemctl --user enable --now "${UNIT_PREFIX}@${i}.timer" >/dev/null 2>&1
     done
@@ -568,27 +568,27 @@ for l in sorted(glob.glob(home + "/.config/systemd/user/timers.target.wants/clin
     if not m:
         continue
     i = m.group(1)
-    emit("issue", i, f"{DIR}/locks/run-s{i}.lock", f"{DIR}/.current-issue-{i}",
+    emit("issue", i, f"{DIR}/locks/run-s{i}.lock", f"{DIR}/state/.current-issue-{i}",
          latest(f"{LOG_DIR}/run-[0-9]*-s{i}.log"))
 for line in ("review", "rebase", "audit", "ci", "follow"):
     n = 1
-    f = f"{DIR}/.scale-{line}"
+    f = f"{DIR}/state/.scale-{line}"
     if os.path.exists(f):
         try: n = max(1, int(open(f).read().strip()))
         except Exception: n = 1
     for i in range(1, n + 1):
-        emit(line, str(i), f"{DIR}/locks/pr-{line}-{i}.lock", f"{DIR}/.current-{line}-{i}",
+        emit(line, str(i), f"{DIR}/locks/pr-{line}-{i}.lock", f"{DIR}/state/.current-{line}-{i}",
              latest(f"{LOG_DIR}/run-pr-{line}-*.log"))
 # repr is manual-only: unnumbered lock and marker, never scaled
-emit("repr", "1", f"{DIR}/locks/pr-repr.lock", f"{DIR}/.current-repr",
+emit("repr", "1", f"{DIR}/locks/pr-repr.lock", f"{DIR}/state/.current-repr",
      latest(f"{LOG_DIR}/run-pr-repr-*.log"))
 n = 1
-f = f"{DIR}/.scale-feat"
+f = f"{DIR}/state/.scale-feat"
 if os.path.exists(f):
     try: n = max(1, int(open(f).read().strip()))
     except Exception: n = 1
 for i in range(1, n + 1):
-    emit("feat", str(i), f"{DIR}/locks/run-feat-{i}.lock", f"{DIR}/.current-feat-{i}",
+    emit("feat", str(i), f"{DIR}/locks/run-feat-{i}.lock", f"{DIR}/state/.current-feat-{i}",
          latest(f"{LOG_DIR}/run-feat-*.log"))
 
 print(fit("LINE", 8) + " " + fit("INST", 4) + " " + fit("STATE", 5) + " "
@@ -613,7 +613,7 @@ PYPS
     [[ "$line" == "--clean" ]] && line=""
     [[ "$inst" == "--clean" ]] && inst=1
     if [[ -z "$line" ]]; then
-      for m in "$DIR"/.current-issue-* "$DIR"/.current-review-* "$DIR"/.current-rebase-* "$DIR"/.current-audit-* "$DIR"/.current-ci-* "$DIR"/.current-feat-* "$DIR"/.current-repr; do
+      for m in "$DIR"/state/.current-issue-* "$DIR"/state/.current-review-* "$DIR"/state/.current-rebase-* "$DIR"/state/.current-audit-* "$DIR"/state/.current-ci-* "$DIR"/state/.current-feat-* "$DIR"/state/.current-repr; do
         [[ -f "$m" ]] || continue
         base="$(basename "$m")"; line="${base#.current-}"; line="${line%-*}"; inst="${base##*-}"
         break
