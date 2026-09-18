@@ -3,10 +3,14 @@
 
 The "v1.0 issue" sheet (Sheet1) is the human-maintained bug ledger. When the
 pipeline delivers a fix for a bug that IS already registered there, fill in:
-  deliver <mid> <pr_url>   append the PR link into the 备注 (M) cell and set
-                           研发负责 (H) to @肖毅 — both only when the cell does
-                           not already carry the value (idempotent, never
-                           clobbers human-filled content)
+  deliver <mid> <pr_url>   ownership-aware fill of the matched row:
+                             H empty      -> H <- @肖毅 AND PR link appended
+                                             into 备注 (M)
+                             H == @肖毅   -> PR link appended into M only
+                             H = someone  -> row left untouched entirely
+                                             (a human owns this bug; our
+                                             delivery is not registered)
+                           link append is idempotent (skipped when present)
   merged  <pr_url>         set 已修复 (G) to "Y" on the row whose 备注 cell
                            carries this PR link (only when G is empty)
   backfill [--dry-run]     re-apply the two rules above to every done/merged
@@ -130,11 +134,16 @@ def deliver(mid, pr_url, dry_run=False):
         print("deliver %s: bug not in sheet (or ambiguous) — left alone" % mid)
         return 0
     row = rows[n - 2]
+    owner_now = cell(row, COL_OWNER)
+    if owner_now and norm(owner_now) != norm(owner):
+        print("deliver %s: row %d owned by %s (not %s) — left alone"
+              % (mid, n, owner_now, owner))
+        return 0
     writes = []
     note = cell(row, COL_NOTE)
     if pr_url not in note:
         writes.append(("%s!M%d" % (tab, n), [[(note + " " + pr_url).strip()]]))
-    if not cell(row, COL_OWNER):
+    if not owner_now:
         writes.append(("%s!H%d" % (tab, n), [[owner]]))
     if not writes:
         print("deliver %s: row %d already up to date" % (mid, n))
