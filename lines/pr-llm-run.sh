@@ -105,6 +105,9 @@ $ENV_STATUS_SECTION"
   while true; do
     attempt=$((attempt + 1))
     local sl; sl=$(wc -l < "$run_log")
+    # a fresh attempt is starting — the previous failure's marker must not
+    # paint this (potentially long, healthy) LLM call as parked
+    [[ -n "${LLM_WAIT_FLAG:-}" ]] && rm -f "$LLM_WAIT_FLAG"
     {
       echo "=== pr-$tag started $(date -Is) pr=$url attempt=$attempt${manual_note} wt=$wt ==="
       manual_note=""

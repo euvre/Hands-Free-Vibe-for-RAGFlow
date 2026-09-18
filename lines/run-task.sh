@@ -227,6 +227,9 @@ $BREADCRUMB")
     mode_line="cold"
     PROMPT_ARGS=("$TASK_PROMPT")
   fi
+  # a fresh attempt is starting — the previous failure's marker must not
+  # paint this (potentially hour-long, healthy) LLM call as parked
+  rm -f "$DAEMON_DIR/logs/llm-wait/$(basename "$LOCK_FILE" .lock)"
   {
     echo "=== run started $(date -Is) attempt=$attempt $mode_line ==="
     timeout "$MAX_SECONDS" "$CLINE_BIN" \
