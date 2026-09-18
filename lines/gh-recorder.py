@@ -26,6 +26,10 @@ Two jobs per pass (systemd timer, every minute; flock-guarded):
    (issues/issue-vision.py). Non-image attachments are never downloaded —
    the link is kept.
 
+   After each scan, outcome transitions (final state — merged or not — and
+   the GitHub conversation count) are recorded into ClickHouse cline.prs by
+   tools/pr_outcomes.py, one row per transition, no TTL.
+
 With this running, line scripts and containers never call gh: writes go to
 the outbox, reads come from gh-store. gh(1) can then leave the golden image.
 
@@ -543,7 +547,7 @@ def _deep_fetch(num, snap):
     rc, out = gh(["pr", "view", str(num), "--repo", GITHUB_REPO, "--json",
                   "title,author,body,additions,deletions,changedFiles,"
                   "baseRefName,headRefName,headRefOid,state,isDraft,labels,"
-                  "updatedAt,url"], timeout=120)
+                  "updatedAt,url,mergedAt,closedAt"], timeout=120)
     if rc != 0 or not out.strip():
         log("pr=%d: deep fetch failed" % num)
         return False
@@ -567,6 +571,8 @@ def _deep_fetch(num, snap):
         "changed_files": meta.get("changedFiles"),
         "labels": [l.get("name") for l in meta.get("labels") or []],
         "url": meta.get("url") or "",
+        "merged_at": meta.get("mergedAt") or "",
+        "closed_at": meta.get("closedAt") or "",
         "checks": checks,
     })
 
@@ -667,6 +673,21 @@ def main():
         drain_outbox()
     if os.environ.get("GH_RECORDER_NO_SCAN") != "1":
         scan_prs()
+        # record outcome transitions (merged? / conversation counts) into
+        # ClickHouse from the just-refreshed local snapshots; never crashes
+        # the pass (the tool itself swallows CH outages, belt + braces here)
+        if not DRY_RUN:
+            try:
+                env = dict(os.environ, PR_OUTCOMES_FROM_RECORDER="1")
+                rc = subprocess.run(
+                    [sys.executable, os.path.join(DIR, "tools", "pr_outcomes.py")],
+                    capture_output=True, text=True, timeout=120, env=env)
+                if rc.returncode != 0:
+                    log("pr_outcomes failed: %s" % (rc.stderr or "").strip()[:200])
+                elif rc.stdout.strip():
+                    log(rc.stdout.strip())
+            except Exception as e:
+                log("pr_outcomes pass error: %s" % e)
     gc()
     return 0
 
