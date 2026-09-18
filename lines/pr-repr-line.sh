@@ -179,6 +179,9 @@ else
 fi
 report="$DIR/scratch/pr-repr-$num-report.md"
 if [[ -s "$report" ]]; then
+  # Screenshots: the report references local scratch paths, dead on GitHub —
+  # publish them to the fork's assets branch and rewrite to raw URLs first.
+  python3 "$DIR/lines/gh-assets.py" publish --pr "$num" --report "$report" >>"$LOG_DIR/daemon.log" 2>&1 || true
   if [[ $prc -eq 0 && -n "$pid" ]]; then
     python3 "$DIR/lines/gh-outbox.py" comment --pr "$num" --body-file "$report" --after "$pid" >>"$LOG_DIR/daemon.log" 2>&1 \
       && log "pr=$num: re-run report enqueued (after push $pid)" || log "pr=$num: report enqueue FAILED"
