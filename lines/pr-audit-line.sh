@@ -13,7 +13,8 @@
 #         meta.md (title/author/body/diffstat) into
 #         audit/pr-<n>/ → clear any stale verdict.
 #   MAIN  (LLM, pr-audit-task.md) code-quality checklist review + main-task
-#         grade END-TO-END verification in the PR's own e2e group (pr-e2e.sh)
+#         grade END-TO-END verification inside the run's golden container
+#         (run-container.sh + env-up local pre-flight, same as review/ci)
 #         → writes audit/pr-<n>/verdict.md (first line VERDICT: LGTM|PROBLEMS|
 #         INCOMPLETE) and desc-zh.md (a Chinese operator note). The agent has
 #         NO publish permission (no gh comment, no push): the PR under review
@@ -22,7 +23,7 @@
 #   POST  (script, this file) parse verdict.md → strip the protocol line →
 #         gh pr comment (our login, English) → stamp pr-audit.py (win or lose,
 #         so a broken round never re-fires against the same head sha) →
-#         pr-e2e.sh down safety net → release worktree → DM the PR author
+#         → release worktree → DM the PR author
 #         (when Feishu-mappable) + the merge owner.
 # Serial inside the line; parallel with the REVIEW and REBASE lines.
 set -u

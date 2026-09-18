@@ -81,16 +81,10 @@ watch a running stage with: hfv follow <line>):
   hfv pr ci <pr-num>           run the CI-failure fix stage on one PR now
   hfv pr audit <pr-num>        WE review someone else's PR as the reviewer:
                                  full code-quality audit + main-task-grade e2e
-                                 test in this PR's own on-demand e2e group, then
+                                 test inside the run's golden container, then
                                  reply on the PR (LGTM when clean); the auto
                                  line also picks up PRs review-requested to us.
                                  HFV_AUDIT_DRY_RUN=1 publishes/stamps nothing
-
-PR audit cluster (persistent services the audit line reuses):
-  hfv pr audit up <worktree>   bring hfv-svc-audit up against a worktree
-  hfv pr audit status|ports    cluster state / port mapping
-  hfv pr audit down            stop it (volumes kept; ticks do this anyway)
-  hfv pr audit purge           drop its volumes+caches entirely
 
 PR line control (per line — review|rebase|audit|ci — or all):
   hfv pr unlock [line|all]     cut a quota/transient retry wait NOW: the next
@@ -718,16 +712,7 @@ PYPS
       review|rebase) pr_stage "$1" "${2:-}" ;;
       ci) pr_stage ci "${2:-}" ;;
       repr) pr_stage repr "${2:-}" ;;
-      audit)
-        case "${2:-}" in
-          up)
-            [[ -n "${3:-}" ]] || { echo "usage: hfv pr audit up <worktree>" >&2; exit 1; }
-            bash "$DIR/framework/pr-e2e.sh" up audit "$3" ;;
-          down|purge|status|ports)
-            bash "$DIR/framework/pr-e2e.sh" "$2" audit ;;
-          *) pr_stage audit "${2:-}" ;;
-        esac
-        ;;
+      audit) pr_stage audit "${2:-}" ;;
       unlock) pr_unlock "${2:-all}" ;;
       abandon) pr_abandon "${2:-all}" ;;
       restart) pr_restart "${2:-all}" ;;
