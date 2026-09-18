@@ -182,7 +182,7 @@ python3 "$DAEMON_DIR/tools/metrics.py" "$RUN_LOG" "$rc" >> "$LOG_DIR/metrics.log
 # no rotation: keep all run logs (issue and feat runs share the pool; 50-log cap removed)
 
 # ALWAYS exit 0: oneshot services run ExecStartPost (feat-deliver.sh, which
-# publishes the staged PR) only after a SUCCESSFUL ExecStart — and run-slot.sh
-# transparently relays this exit code through docker run. The real rc lives in
-# the daemon.log line above.
+# publishes the staged PR) only after a SUCCESSFUL ExecStart — run-container.sh
+# relays this exit code through docker run. The real rc lives in the
+# daemon.log line above.
 exit 0

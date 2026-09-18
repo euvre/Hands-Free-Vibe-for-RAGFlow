@@ -42,3 +42,6 @@ playbook-houses.md
 # ---- gh-recorder runtime state (async GitHub scan snapshots + write outbox) ----
 lines/gh-store/
 lines/gh-outbox/
+
+# ---- IDE ----
+.idea/

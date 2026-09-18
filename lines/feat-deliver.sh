@@ -37,8 +37,6 @@ MSG_FILE="$FDIR/commit-msg.txt"
 if [[ ! -s "$BRANCH_FILE" || ! -s "$TITLE_FILE" || ! -s "$BODY_FILE" || ! -s "$MSG_FILE" ]]; then
   log "staging incomplete/absent under $FDIR — feat run did not reach delivery; nothing published"
   [[ -d "$FDIR" ]] && dm "本次 feat 任务未产出可交付的 PR（交付文件不完整），详见日志。"
-  # still try to idle-down the slot stack below
-  bash "$DIR/lines/run-slot.sh" "${HFV_SLOT:-9}" --down >>"$LOG_DIR/daemon.log" 2>&1 || true
   exit 0
 fi
 
@@ -56,14 +54,12 @@ fi
 if ! git -C "$SLOT_REPO" rev-parse --verify --quiet "refs/heads/$BRANCH" >/dev/null; then
   log "branch $BRANCH not found in $SLOT_REPO — the worker never committed it"
   dm "feat 交付失败：分支 $BRANCH 不存在于 slot 克隆。"
-  bash "$DIR/lines/run-slot.sh" "${HFV_SLOT:-9}" --down >>"$LOG_DIR/daemon.log" 2>&1 || true
   exit 0
 fi
 
 if ! git -C "$SLOT_REPO" push "$FORK_REMOTE" "refs/heads/$BRANCH:refs/heads/$BRANCH" >>"$LOG_DIR/daemon.log" 2>&1; then
   log "push to $FORK_REMOTE/$BRANCH FAILED (non-ff or network) — nothing else attempted"
   dm "feat 交付失败：push $BRANCH 被拒绝（远端已存在非快进历史？），需人工处理。"
-  bash "$DIR/lines/run-slot.sh" "${HFV_SLOT:-9}" --down >>"$LOG_DIR/daemon.log" 2>&1 || true
   exit 0
 fi
 
@@ -81,7 +77,4 @@ else
 fi
 rm -rf "$FDIR"
 
-# Idle-down the slot's svc stack: feat is one-shot, ~8G of ES/MySQL should not
-# linger until the next feat run (volumes kept — warm restart).
-bash "$DIR/lines/run-slot.sh" "${HFV_SLOT:-9}" --down >>"$LOG_DIR/daemon.log" 2>&1 || true
 exit 0

@@ -29,30 +29,6 @@ if [[ -f "$DIR/logs/.quota-dead$SUF" || -f "$DIR/tasks/.last-run-info$SUF" || -f
     fi
   fi
 fi
-# 0.5 闲置 svc 栈 TTL 回收：本槽位连续 SLOT_IDLE_TTL_SECS 没有真实 LLM run
-#     （logs/run-*-s<N>.log 的最新 mtime 是唯一事实来源——resting tick 不产
-#     生 run log），整套 svc（ES ~4.5G + MySQL 等）空转白占内存。stop 之
-#     （volumes 保留，数据不丢）；下一个领到任务的 tick 由 run-slot.sh 的常
-#     规 compose up 暖启动（~1-2min）。与 run-slot.sh 的 no-task gate 配合：
-#     空 tick 不再 up 栈，down 状态可持续到真正来活。
-SLOT_IDLE_TTL_SECS=$((3 * 3600))
-if [[ -n "$SUF" ]]; then
-  slot_n="${SUF#-s}"
-  latest_run="$(ls -1t "$DIR"/logs/run-[0-9]*"$SUF".log 2>/dev/null | head -1)"
-  last=0
-  [[ -n "$latest_run" ]] && last="$(stat -c %Y "$latest_run" 2>/dev/null || echo 0)"
-  if (( $(date +%s) - last > SLOT_IDLE_TTL_SECS )) && \
-     docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^hfv-svc-${slot_n}-es01-1$"; then
-    source "$DIR/hfv.conf"   # RAGFLOW_MAIN → compose --env-file
-    HFV_SLOT="$slot_n" docker compose -p "hfv-svc-$slot_n" \
-      --env-file "$RAGFLOW_MAIN/docker/.env" \
-      -f "$DIR/docker/svc-compose.yml" stop >>"$DIR/logs/daemon.log" 2>&1 \
-      && echo "[$(date +%Y%m%d-%H%M%S)] pre-task: slot$slot_n svc stack stopped (idle>${SLOT_IDLE_TTL_SECS}s, volumes kept)" >> "$DIR/logs/daemon.log"
-  fi
-fi
-
-
-
 # 并行槽位下，第 1 步（飞书扫描）只在主槽（slot 1）与 legacy 路径执行，避免
 # 多个槽位重复扫描同一飞书群、双倍消耗 API 配额；3 及之后的步骤是每槽位
 # 自己的事，全部照常执行。

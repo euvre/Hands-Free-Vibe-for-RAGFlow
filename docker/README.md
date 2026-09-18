@@ -66,9 +66,6 @@ TASK CONTAINER hfv-task-<ts>-s<n> (one task, throwaway, --rm)
   Dockerfile.task        the hfv-task image (frozen golden base)
   task-entrypoint.sh     PID-1 child: supervisord + env sync + login refresh
   task-services.conf     the in-container service stack definition
-  svc-compose.yml        legacy per-slot host service stack — still referenced
-                         by the idle-stack reaper (pre-task.sh) and
-                         run-slot.sh --down cleanup
   gitconfig.worker       container git identity (ro mount; no credentials)
   mcp-settings.worker.json  chrome-devtools-mcp config sample (copied manually
                          into sessions; not referenced by code)
