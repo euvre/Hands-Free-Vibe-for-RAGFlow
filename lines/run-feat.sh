@@ -35,7 +35,7 @@ source "$DAEMON_DIR/config.sh"
 # run-feat-<inst>.lock and its own spec/deliver staging. A feat run has its
 # own throwaway worktree, so it no longer shares the issue line's lock.
 FEAT_INST="${HFV_FEAT_INST:-1}"
-LOCK_FILE="$DAEMON_DIR/run-feat-$FEAT_INST.lock"
+LOCK_FILE="$DAEMON_DIR/locks/run-feat-$FEAT_INST.lock"
 FEAT_SPEC="$DAEMON_DIR/feat/current-feature-$FEAT_INST.md"
 FEAT_DELIVER="$DAEMON_DIR/feat/deliver-$FEAT_INST"
 CUR_FILE="$DAEMON_DIR/.current-feat-$FEAT_INST"

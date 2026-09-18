@@ -22,7 +22,7 @@ set -u
 HFV_DIR="$HOME/hands-free-vibe"
 source "$HFV_DIR/config.sh"
 WORKDIR="$RAGFLOW_MAIN"            # config.sh: the slot's own clone when HFV_SLOT is set
-LOCK_FILE="$HFV_DIR/run${HFV_SUF}.lock"
+LOCK_FILE="$HFV_DIR/locks/run${HFV_SUF}.lock"
 LOG_DIR="$HFV_DIR/logs"
 TS="$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$LOG_DIR"

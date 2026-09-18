@@ -28,7 +28,7 @@ _HFV = _load_hfv()
 # ~30s)→full-rewrite could clobber pr-follow stamps landed in between
 # (comment_check_at / dm_* / pr_flag flips) — same lost-update family as the
 # only its save_flips critical section, we lock the whole main() run.
-STORE_LOCK = os.path.join(DIR, ".store.lock")
+STORE_LOCK = os.path.join(DIR, "..", "locks", ".store.lock")
 
 
 def _store_locked(fn):

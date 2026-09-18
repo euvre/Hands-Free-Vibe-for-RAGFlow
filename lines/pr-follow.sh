@@ -21,7 +21,7 @@ LOG_DIR="$DIR/logs"
 # whole-store sweep — one instance covers it; extra instances only add
 # manual-delegation capacity (hfv pr follow rebase|review <pr>).
 INST="${HFV_INST:-1}"
-LOCK_FILE="$DIR/pr-follow-$INST.lock"
+LOCK_FILE="$DIR/locks/pr-follow-$INST.lock"
 DM="$DIR/tools/feishu-dm.py"
 source "$DIR/config.sh"
 

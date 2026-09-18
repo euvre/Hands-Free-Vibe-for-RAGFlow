@@ -7,7 +7,7 @@ DIR="/home/inf/hands-free-vibe"
 LOG="$DIR/logs/guard-apply.log"
 {
   echo "[$(date '+%F %T')] watcher started (pid $$), waiting for run.lock"
-  exec 9>"$DIR/run.lock"
+  exec 9>"$DIR/locks/run.lock"
   flock 9
   echo "[$(date '+%F %T')] lock acquired (no live run) — patching run-task.sh"
   if python3 "$DIR/tools/.apply-exec-guard.py" && bash -n "$DIR/../lines/run-task.sh"; then

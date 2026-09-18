@@ -28,7 +28,7 @@ sys.path.insert(0, os.path.dirname(base_dir))  # repo root
 from hfv_source import is_gh
 store = os.path.join(base_dir, "issues.jsonl")
 # Shared store lock (see issue_recorder.py STORE_LOCK).
-_lock = open(os.path.join(base_dir, ".store.lock"), "w")
+_lock = open(os.path.join(base_dir, "..", "locks", ".store.lock"), "w")
 fcntl.flock(_lock, fcntl.LOCK_EX)
 _suf = ("-s" + os.environ["HFV_SLOT"]) if os.environ.get("HFV_SLOT") else ""
 current = os.path.join(base_dir, "current%s.json" % _suf)
@@ -294,7 +294,7 @@ def main():
     HANDOFF_GRACE_MS = 10 * 60 * 1000  # select -> run-task handoff + slack
 
     def slot_lock_held(slot):
-        path = os.path.join(base_dir, "..",
+        path = os.path.join(base_dir, "..", "locks",
                             "run.lock" if slot in ("", "host")
                             else "run-s%s.lock" % slot)
         try:

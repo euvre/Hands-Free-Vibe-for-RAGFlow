@@ -38,7 +38,7 @@ INST="${HFV_INST:-1}"
 N_INST=1
 [[ -f "$DIR/.scale-ci" ]] && N_INST="$(cat "$DIR/.scale-ci" 2>/dev/null)"
 [[ "$N_INST" =~ ^[0-9]+$ && "$N_INST" -ge 1 ]] || N_INST=1
-LOCK_FILE="$DIR/pr-ci-$INST.lock"
+LOCK_FILE="$DIR/locks/pr-ci-$INST.lock"
 CUR_FILE="$DIR/.current-ci-$INST"
 source "$DIR/config.sh"
 CLONE="$RAGFLOW_MAIN"

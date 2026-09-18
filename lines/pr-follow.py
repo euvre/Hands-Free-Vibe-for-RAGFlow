@@ -112,7 +112,7 @@ def save_flips(flips):
     common lock its write would clobber stamps we land meanwhile."""
     if DRY_RUN or not flips:
         return 0
-    lock_path = os.path.join(DIR, "issues", ".store.lock")
+    lock_path = os.path.join(DIR, "locks", ".store.lock")
     merged_prs = []
     with open(lock_path, "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
@@ -821,7 +821,7 @@ def _with_pr_lock(fn, *args):
     NOTE: uses a SEPARATE file (.pr-stalled.lock) — flock locks are per open
     file description, so sharing pr-follow.lock would deadlock when called
     from inside pr-follow.sh (which holds that lock on its own fd)."""
-    lock_path = os.path.join(DIR, ".pr-stalled.lock")
+    lock_path = os.path.join(DIR, "locks", ".pr-stalled.lock")
     with open(lock_path, "w") as fh:
         fcntl.flock(fh, fcntl.LOCK_EX)
         try:

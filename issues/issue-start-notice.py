@@ -19,7 +19,7 @@ DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, DIR)  # DIR is the repo root here, for hfv_source
 from hfv_source import is_gh
 STORE = os.path.join(DIR, "issues.jsonl")
-STORE_LOCK = os.path.join(DIR, ".store.lock")
+STORE_LOCK = os.path.join(DIR, "..", "locks", ".store.lock")
 REPLY = os.path.join(DIR, "issue-reply.py")
 NOTICE = "自动化脚本已经正式开始处理该任务，此后 @ 认领/接管 将不再生效。"
 

@@ -54,7 +54,7 @@ if not mid:
     sys.exit(0)
 
 # Shared store lock (same discipline as issue-select.sh / issue-release.py).
-_lock = open(os.path.join(base_dir, ".store.lock"), "w")
+_lock = open(os.path.join(base_dir, "..", "locks", ".store.lock"), "w")
 fcntl.flock(_lock, fcntl.LOCK_EX)
 
 records = []

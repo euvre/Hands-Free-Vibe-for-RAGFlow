@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.dirname(base_dir))  # repo root
 from hfv_source import is_gh
 store = os.path.join(base_dir, "issues.jsonl")
 # Shared store lock (see issue_recorder.py STORE_LOCK).
-_lock = open(os.path.join(base_dir, ".store.lock"), "w")
+_lock = open(os.path.join(base_dir, "..", "locks", ".store.lock"), "w")
 fcntl.flock(_lock, fcntl.LOCK_EX)
 cfg = {}
 for line in open(os.path.join(base_dir, "config")):

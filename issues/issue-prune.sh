@@ -23,7 +23,7 @@ import fcntl, json, os, shutil, sys, time
 store, days = sys.argv[1], int(sys.argv[2])
 # Shared store lock (see issue_recorder.py STORE_LOCK): serialize whole-store
 # rewrites against recorder / pr-follow / sync / select / pre-claim writers.
-_lock = open(os.path.join(os.path.dirname(store), ".store.lock"), "w")
+_lock = open(os.path.join(os.path.dirname(store), "..", "locks", ".store.lock"), "w")
 fcntl.flock(_lock, fcntl.LOCK_EX)
 cutoff = int(time.time() * 1000) - days * 86400 * 1000
 adir = os.path.join(os.path.dirname(store), "attachments")

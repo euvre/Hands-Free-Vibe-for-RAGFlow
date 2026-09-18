@@ -129,7 +129,7 @@ def main():
     # PR_OUTCOMES_FROM_RECORDER=1 (it already holds the lock; flocking then
     # would deadlock the pass).
     if os.environ.get("PR_OUTCOMES_FROM_RECORDER") != "1":
-        fd = os.open(os.path.join(DIR, "lines", ".gh-recorder.lock"),
+        fd = os.open(os.path.join(DIR, "locks", ".gh-recorder.lock"),
                      os.O_CREAT | os.O_RDWR)
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)

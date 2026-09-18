@@ -171,7 +171,7 @@ any_active() {
   # or any one-shot task container is live (hfv-task-*, run-container.sh —
   # those hold no run lock). Independent of systemd's oneshot "activating".
   local f
-  for f in "$DIR"/run.lock "$DIR"/run-s*.lock; do
+  for f in "$DIR"/locks/run.lock "$DIR"/locks/run-s*.lock; do
     [[ -e "$f" ]] || continue
     flock -n "$f" -c true 2>/dev/null || return 0
   done
@@ -181,7 +181,7 @@ any_active() {
 
 any_pr_active() {
   local f
-  for f in "$DIR"/pr-follow-*.lock "$DIR"/pr-rebase-*.lock "$DIR"/pr-review-*.lock "$DIR"/pr-audit-*.lock "$DIR"/pr-ci-*.lock; do
+  for f in "$DIR"/locks/pr-follow-*.lock "$DIR"/locks/pr-rebase-*.lock "$DIR"/locks/pr-review-*.lock "$DIR"/locks/pr-audit-*.lock "$DIR"/locks/pr-ci-*.lock; do
     [[ -e "$f" ]] || continue
     flock -n "$f" -c true 2>/dev/null || return 0
   done
@@ -194,8 +194,8 @@ any_pr_active() {
 # switching the profile is safe; a WORKING run keeps the refusal.
 all_active_llm_parked() {
   local f name c
-  for f in "$DIR"/run.lock "$DIR"/run-s*.lock "$DIR"/run-feat-*.lock \
-           "$DIR"/pr-follow-*.lock "$DIR"/pr-rebase-*.lock "$DIR"/pr-review-*.lock "$DIR"/pr-audit-*.lock "$DIR"/pr-ci-*.lock; do
+  for f in "$DIR"/locks/run.lock "$DIR"/locks/run-s*.lock "$DIR"/locks/run-feat-*.lock \
+           "$DIR"/locks/pr-follow-*.lock "$DIR"/locks/pr-rebase-*.lock "$DIR"/locks/pr-review-*.lock "$DIR"/locks/pr-audit-*.lock "$DIR"/locks/pr-ci-*.lock; do
     [[ -e "$f" ]] || continue
     if ! flock -n "$f" -c true 2>/dev/null; then
       name="$(basename "$f" .lock)"
@@ -225,12 +225,12 @@ pr_stage() { # pr_stage <review|rebase|audit|ci> <pr-num>
       # namespaces with their own locks — NOT conflicts; their timers
       # already run them concurrently with each other.
       if [[ "$action" == "audit" || "$action" == "ci" || "$action" == "repr" ]]; then
-        if ! flock -n "$DIR/pr-$action.lock" -c true 2>/dev/null; then
+        if ! flock -n "$DIR/locks/pr-$action.lock" -c true 2>/dev/null; then
           echo "pr-$action line busy (its lock is held — often just an LLM retry wait). Wait, or 'hfv pr unlock $action' / 'hfv pr abandon $action'." >&2; exit 1
         fi
       else
         busy=0
-        for f in "$DIR"/pr-follow-*.lock; do
+        for f in "$DIR"/locks/pr-follow-*.lock; do
           [[ -e "$f" ]] || continue
           flock -n "$f" -c true 2>/dev/null || busy=1
         done
@@ -241,7 +241,7 @@ pr_stage() { # pr_stage <review|rebase|audit|ci> <pr-num>
         # unnumbered name — checking only the unnumbered one let a manual run
         # start while the timer line was busy, then die silently on the real
         # lock (2026-09-18: manual review 19812 bounced behind review 19743).
-        for f in "$DIR/pr-$action.lock" "$DIR"/pr-$action-*.lock; do
+        for f in "$DIR/locks/pr-$action.lock" "$DIR"/locks/pr-$action-*.lock; do
           [[ -e "$f" ]] || continue
           if ! flock -n "$f" -c true 2>/dev/null; then
             echo "pr-$action line busy ($(basename "$f") is held — often just an LLM retry wait). Wait, or 'hfv pr unlock $action' / 'hfv pr abandon $action'." >&2; exit 1
@@ -279,7 +279,7 @@ pr_unlock() { # pr_unlock [review|rebase|audit|ci|all]
   flag_dir="${HFV_UNLOCK_FLAG_DIR:-$DIR}"
   for ln in review rebase audit ci; do
     [[ "$line" == all || "$line" == "$ln" ]] || continue
-    lock="$DIR/pr-$ln.lock"; flag="$flag_dir/pr-unlock-$ln.flag"
+    lock="$DIR/locks/pr-$ln.lock"; flag="$flag_dir/pr-unlock-$ln.flag"
     # Lock holders = the line's bash (fd 9) plus any child that inherited
     # fd 9. During an LLM retry wait the sleep child holds it too — that is
     # the only state a manual unlock makes sense in.
@@ -321,7 +321,7 @@ pr_abandon() { # pr_abandon [review|rebase|audit|all] — kill the in-flight run
   for ln in review rebase audit ci; do
     [[ "$line" == all || "$line" == "$ln" ]] || continue
     unit="cline-feishu-pr-$ln.service"
-    lock="$DIR/pr-$ln.lock"
+    lock="$DIR/locks/pr-$ln.lock"
     pids="$(fuser "$lock" 2>/dev/null | tr -cs '0-9' '\n' | grep -E '^[0-9]+$' | sort -u || true)"
     act="$(systemctl --user is-active "$unit" 2>/dev/null || true)"
     if [[ -z "$pids" && "$act" != "active" && "$act" != "activating" ]]; then
@@ -356,7 +356,7 @@ pr_abandon() { # pr_abandon [review|rebase|audit|all] — kill the in-flight run
   # kept). The RESIDENT audit cluster intentionally stays up.
   others=0
   for ln in review rebase audit ci; do
-    flock -n "$DIR/pr-$ln.lock" -c true 2>/dev/null || others=1
+    flock -n "$DIR/locks/pr-$ln.lock" -c true 2>/dev/null || others=1
   done
   if [[ "$others" == 0 ]]; then
     for c in $(docker ps --format '{{.Names}}' 2>/dev/null | sed -n 's/^hfv-e2e-pr\([0-9][0-9]*\)$/\1/p' | sort -u); do
@@ -384,7 +384,7 @@ pr_restart() { # pr_restart [review|rebase|audit|all] — kill the in-flight run
     # the abandon kill waits for the lock internally; give stragglers one more
     # beat so the fresh run does not lose the flock race and no-op out
     for i in 1 2 3 4 5; do
-      flock -n "$DIR/pr-$ln.lock" -c true 2>/dev/null && break
+      flock -n "$DIR/locks/pr-$ln.lock" -c true 2>/dev/null && break
       sleep 1
     done
     # --no-block: oneshot unit — a plain start blocks until the whole run
@@ -409,7 +409,7 @@ case "${1:-help}" in
       [[ -e "$l" ]] || continue
       inst="$(basename "$l" | sed -n 's/^cline-feishu-triage@\([0-9][0-9]*\)\.timer$/\1/p')"
       [[ -n "$only" && "$inst" != "$only" ]] && continue
-      if ! flock -n "$DIR/run-s$inst.lock" -c true 2>/dev/null; then
+      if ! flock -n "$DIR/locks/run-s$inst.lock" -c true 2>/dev/null; then
         echo "instance $inst: a run is already active; skipped (run-s$inst.lock held)"
         continue
       fi
@@ -448,7 +448,7 @@ case "${1:-help}" in
     [[ "$nfeat" =~ ^[0-9]+$ && "$nfeat" -ge 1 ]] || nfeat=1
     inst=""
     for (( i = 1; i <= nfeat; i++ )); do
-      if flock -n "$DIR/run-feat-$i.lock" -c true 2>/dev/null; then inst="$i"; break; fi
+      if flock -n "$DIR/locks/run-feat-$i.lock" -c true 2>/dev/null; then inst="$i"; break; fi
     done
     if [[ -z "$inst" ]]; then
       echo "all $nfeat feat instance(s) busy; try again later (or: hfv scale feat <n>)"
@@ -568,7 +568,7 @@ for l in sorted(glob.glob(home + "/.config/systemd/user/timers.target.wants/clin
     if not m:
         continue
     i = m.group(1)
-    emit("issue", i, f"{DIR}/run-s{i}.lock", f"{DIR}/.current-issue-{i}",
+    emit("issue", i, f"{DIR}/locks/run-s{i}.lock", f"{DIR}/.current-issue-{i}",
          latest(f"{LOG_DIR}/run-[0-9]*-s{i}.log"))
 for line in ("review", "rebase", "audit", "ci", "follow"):
     n = 1
@@ -577,10 +577,10 @@ for line in ("review", "rebase", "audit", "ci", "follow"):
         try: n = max(1, int(open(f).read().strip()))
         except Exception: n = 1
     for i in range(1, n + 1):
-        emit(line, str(i), f"{DIR}/pr-{line}-{i}.lock", f"{DIR}/.current-{line}-{i}",
+        emit(line, str(i), f"{DIR}/locks/pr-{line}-{i}.lock", f"{DIR}/.current-{line}-{i}",
              latest(f"{LOG_DIR}/run-pr-{line}-*.log"))
 # repr is manual-only: unnumbered lock and marker, never scaled
-emit("repr", "1", f"{DIR}/pr-repr.lock", f"{DIR}/.current-repr",
+emit("repr", "1", f"{DIR}/locks/pr-repr.lock", f"{DIR}/.current-repr",
      latest(f"{LOG_DIR}/run-pr-repr-*.log"))
 n = 1
 f = f"{DIR}/.scale-feat"
@@ -588,7 +588,7 @@ if os.path.exists(f):
     try: n = max(1, int(open(f).read().strip()))
     except Exception: n = 1
 for i in range(1, n + 1):
-    emit("feat", str(i), f"{DIR}/run-feat-{i}.lock", f"{DIR}/.current-feat-{i}",
+    emit("feat", str(i), f"{DIR}/locks/run-feat-{i}.lock", f"{DIR}/.current-feat-{i}",
          latest(f"{LOG_DIR}/run-feat-*.log"))
 
 print(fit("LINE", 8) + " " + fit("INST", 4) + " " + fit("STATE", 5) + " "

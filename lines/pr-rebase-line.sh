@@ -37,7 +37,7 @@ INST="${HFV_INST:-1}"
 N_INST=1
 [[ -f "$DIR/.scale-rebase" ]] && N_INST="$(cat "$DIR/.scale-rebase" 2>/dev/null)"
 [[ "$N_INST" =~ ^[0-9]+$ && "$N_INST" -ge 1 ]] || N_INST=1
-LOCK_FILE="$DIR/pr-rebase-$INST.lock"
+LOCK_FILE="$DIR/locks/pr-rebase-$INST.lock"
 CUR_FILE="$DIR/.current-rebase-$INST"
 source "$DIR/config.sh"
 CLONE="$RAGFLOW_MAIN"

@@ -131,7 +131,7 @@ import fcntl, json, os, sys, urllib.request, urllib.error
 store, current, config = sys.argv[1], sys.argv[2], sys.argv[3]
 # Shared store lock (see issues/issue_recorder.py STORE_LOCK): this script
 # rewrites issues.jsonl (claim_reply_id write-back).
-_lock = open(os.path.join(os.path.dirname(store), ".store.lock"), "w")
+_lock = open(os.path.join(os.path.dirname(store), "..", "locks", ".store.lock"), "w")
 fcntl.flock(_lock, fcntl.LOCK_EX)
 CLAIM_MARK = "当前任务已被认领"
 

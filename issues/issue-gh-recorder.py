@@ -129,7 +129,7 @@ def main():
     if issues is None:
         return 0
     # shared store lock — same discipline as every other store writer
-    _lock = open(os.path.join(base_dir, ".store.lock"), "w")
+    _lock = open(os.path.join(base_dir, "..", "locks", ".store.lock"), "w")
     fcntl.flock(_lock, fcntl.LOCK_EX)
 
     known = set()

@@ -70,7 +70,7 @@ OUTBOX = os.path.join(LINES, "gh-outbox")
 GH_STORE = os.path.join(LINES, "gh-store")
 FETCHER = os.path.join(DIR, "framework", "pr-comments-fetch.sh")
 REPLY = os.path.join(ISSUES, "issue-reply.py")
-LOCK = os.path.join(LINES, ".gh-recorder.lock")
+LOCK = os.path.join(DIR, "locks", ".gh-recorder.lock")
 
 GH = os.environ.get("GH_BIN", "gh")
 REPO_MAIN = _HFV["RAGFLOW_MAIN"]

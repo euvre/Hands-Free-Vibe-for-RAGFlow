@@ -26,7 +26,7 @@ LOG_DIR="$DIR/logs"
 source "$DIR/config.sh"
 CLONE="$RAGFLOW_MAIN"
 WTROOT="$CLONE/wt"
-LOCK_FILE="$DIR/pr-repr.lock"
+LOCK_FILE="$DIR/locks/pr-repr.lock"
 CUR_FILE="$DIR/.current-repr"
 TMPL="$(resolve_prompt pr-repr-task)"
 

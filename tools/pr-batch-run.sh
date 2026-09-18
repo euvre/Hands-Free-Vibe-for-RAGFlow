@@ -37,7 +37,7 @@ while read -r num; do
   for stage in rebase review; do
     # wait for a prior PR-line run to release the lock (rare; timer is off)
     for _ in $(seq 1 90); do
-      flock -n "$DIR/pr-follow.lock" -c true 2>/dev/null && break
+      flock -n "$DIR/locks/pr-follow.lock" -c true 2>/dev/null && break
       sleep 60
     done
     before_log="$(ls -1t "$LOG_DIR"/run-pr-$stage-*.log 2>/dev/null | head -1 || true)"

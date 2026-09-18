@@ -19,9 +19,9 @@ feat/
 issues/issues.jsonl*
 issues/current*.json
 issues/attachments/
-issues/.store.lock
 issues/__pycache__/
-*.lock
+locks/*
+!locks/.gitkeep
 *.flag
 .current-*
 .scale-*

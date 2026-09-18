@@ -13,7 +13,7 @@ DIR="$(cd "$(dirname "$0")/.." && pwd)"  # repo root (this script lives in lines
 SUF=""
 [[ -n "${HFV_SLOT:-}" ]] && SUF="-s$HFV_SLOT"
 if [[ -f "$DIR/logs/.quota-dead$SUF" || -f "$DIR/tasks/.last-run-info$SUF" || -f "$DIR/tasks/.current$SUF" ]]; then
-  if flock -n "$DIR/run$SUF.lock" true 2>/dev/null; then
+  if flock -n "$DIR/locks/run$SUF.lock" true 2>/dev/null; then
     if [[ -f "$DIR/logs/.quota-dead$SUF" ]]; then
       python3 "$DIR/issues/issue-quota-demote.py" || true
       rm -f "$DIR/logs/.quota-dead$SUF"
@@ -72,7 +72,7 @@ if [[ "$(python3 "$DIR/tools/model-profile.py" current 2>/dev/null)" == "glm" ]]
   (
     flock -w 300 9 || exit 0
     timeout 300 python3 "$DIR/issues/issue-vision.py" >> "$DIR/logs/vision.log" 2>&1 || true
-  ) 9>"$DIR/.vision.lock"
+  ) 9>"$DIR/locks/.vision.lock"
 fi
 
 # 3. 选定本轮要处理的 open issue 并落盘 current.json（无 open 项则不产出，
