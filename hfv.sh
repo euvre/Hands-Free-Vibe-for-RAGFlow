@@ -579,6 +579,9 @@ for line in ("review", "rebase", "audit", "ci", "follow"):
     for i in range(1, n + 1):
         emit(line, str(i), f"{DIR}/pr-{line}-{i}.lock", f"{DIR}/.current-{line}-{i}",
              latest(f"{LOG_DIR}/run-pr-{line}-*.log"))
+# repr is manual-only: unnumbered lock and marker, never scaled
+emit("repr", "1", f"{DIR}/pr-repr.lock", f"{DIR}/.current-repr",
+     latest(f"{LOG_DIR}/run-pr-repr-*.log"))
 n = 1
 f = f"{DIR}/.scale-feat"
 if os.path.exists(f):
