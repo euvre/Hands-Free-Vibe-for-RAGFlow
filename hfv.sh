@@ -44,75 +44,64 @@ Run control:
   hfv run [n]                  trigger one issue-triage run NOW on every
                                  enabled instance (or only instance <n>);
                                  an instance mid-run is skipped
-  hfv feat -f <file>           run one feature-implementation task with the given spec
-                                 (the LLM only commits locally — a host-side
-                                 post step pushes and opens the PR)
+  hfv feat -f <file>           run one feature-implementation task from the
+                                 given spec file (the LLM only commits locally
+                                 — a host-side post step pushes and opens the PR)
   hfv stop                     stop the running task on ANY line (issue / feat / pr)
   hfv on | off                 enable / disable all six timers
   hfv scale <line> <n>         run <n> parallel instances of a task line
                                  (issue|review|rebase|audit|ci|follow|feat|repr;
                                  0 = line off)
 
-Task containers (one per run, hfv-task-<ts>):
-  hfv ps                       one line per live task container (name / age /
-                                 latest run log), plus the audit and ci lines
+Watching runs (one throwaway container per run, hfv-task-<ts>):
+  hfv ps                       live task containers: name / age / latest run log
   hfv log [line] [inst]        last 40 lines of a line instance's run log
                                  (no args: the first RUNning task)
-  hfv follow [line] [inst]     tail -f the same log (--clean: complete
-                               per-iteration content instead of raw JSONL)
+  hfv follow [line] [inst]     tail -f the same log; --clean renders complete
+                                 per-iteration content instead of raw JSONL
 
 Issue line:
-  hfv issue log                last 40 lines of the latest issue-line run log
-  hfv issue follow             tail -f the latest issue-line run log
+  hfv issue log | follow       the latest issue-line run log (static / tail -f)
   hfv issue rec [reset]        one issue-recording pass now; 'reset' drops the
-                               cursor so the next pass re-scans the full window
+                                 cursor so the next pass re-scans the full window
   hfv issue window [days]      show / set the issue sliding window (1-30 days)
 
-PR line (manual single-shot; auto passes run on the pr timers;
-         watch a running stage with: hfv follow <line> [inst]):
-  hfv pr review <pr-num>       run the comment-review stage on one PR now
+PR stages (manual single-shot; the pr timers also run them automatically —
+watch a running stage with: hfv follow <line>):
+  hfv pr review <pr-num>       handle new reviewer comments on one PR now
+                                 (CodeRabbit rounds with actionable findings
+                                 count too; pure-bot/noise sets are skipped)
   hfv pr repr <pr-num>         re-run the PR's original task with the full
-                               stack: real end-to-end verification, fixes for
-                               what fails, then push + a report comment (for
-                               PRs delivered without real e2e verification)
+                                 stack: real end-to-end verification, fixes for
+                                 what fails, then push + a report comment (for
+                                 PRs delivered without real e2e verification)
   hfv pr rebase <pr-num>       run the conflict-rebase on one PR now
-                               (conflict-free branches are handled by a ~15s
-                               script, no LLM; only real conflicts launch one)
+                                 (conflict-free branches are handled by a ~15s
+                                 script, no LLM; only real conflicts launch one)
   hfv pr ci <pr-num>           run the CI-failure fix stage on one PR now
-  hfv pr audit <pr-num>       WE review someone else's PR as the reviewer:
-                               full code-quality audit + main-task-grade e2e
-                               test in this PR's own on-demand e2e group
-                               (hfv-svc-pr<N>, up for the round, down after),
-                               then reply on the PR (LGTM when clean); the
-                               auto line also picks up PRs review-requested to us
-  HFV_AUDIT_DRY_RUN=1 hfv pr audit <pr-num>
-                              dry-run: full audit incl. the Chinese operator
-                               note, but nothing published/stamped/DM'd
-  hfv pr audit up <worktree>  bring the on-demand audit cluster (hfv-svc-audit)
-                               up against a worktree (worker mount is swapped;
-                               service volumes/caches persist across PRs)
-  hfv pr audit status|ports   show the audit cluster state / port mapping
-  hfv pr audit down           stop the audit cluster (volumes kept; frees RAM —
-                               the tick does this automatically after each round)
-  hfv pr audit purge          drop the audit cluster's volumes+caches entirely
-  hfv pr unlock [review|rebase|audit|ci|all]
-                               manually cut a PR line's LLM quota/transient
-                               retry wait: the next attempt fires immediately,
-                               does NOT consume the retry budget, and is
-                               logged as MANUAL UNLOCK (default: all lines)
-  hfv pr abandon [review|rebase|audit|ci|all]
-                               kill that PR line's in-flight run NOW (quota
-                               burn / wedged / wrong direction). NOT terminal:
-                               the PR stays eligible and the next tick
-                               re-picks it from GitHub state (contrast: task
-                               abandon IS terminal — local registry owns
-                               selection there)
-  hfv pr restart [review|rebase|audit|ci|all]
-                               abandon + IMMEDIATE fresh run of the line (new
-                               PRE / candidate selection / LLM — no tick wait).
-                               Escalation: unlock cuts a retry wait inside the
-                               same run; abandon kills and waits for the tick;
-                               restart kills and re-runs right away
+  hfv pr audit <pr-num>        WE review someone else's PR as the reviewer:
+                                 full code-quality audit + main-task-grade e2e
+                                 test in this PR's own on-demand e2e group, then
+                                 reply on the PR (LGTM when clean); the auto
+                                 line also picks up PRs review-requested to us.
+                                 HFV_AUDIT_DRY_RUN=1 publishes/stamps nothing
+
+PR audit cluster (persistent services the audit line reuses):
+  hfv pr audit up <worktree>   bring hfv-svc-audit up against a worktree
+  hfv pr audit status|ports    cluster state / port mapping
+  hfv pr audit down            stop it (volumes kept; ticks do this anyway)
+  hfv pr audit purge           drop its volumes+caches entirely
+
+PR line control (per line — review|rebase|audit|ci — or all):
+  hfv pr unlock [line|all]     cut a quota/transient retry wait NOW: the next
+                                 attempt fires immediately, free of the retry
+                                 budget, logged as MANUAL UNLOCK
+  hfv pr abandon [line|all]    kill the in-flight run NOW (quota burn / wedged
+                                 / wrong direction). NOT terminal: the next tick
+                                 re-picks the PR from GitHub state (contrast:
+                                 task abandon IS terminal)
+  hfv pr restart [line|all]    abandon + IMMEDIATE fresh run (no tick wait).
+                                 Escalation: unlock < abandon < restart
 
 Environment (the framework pre-flight every LLM run gets injected):
   hfv env check [worktree]     run the known-failure-mode checks now (API proxy
@@ -129,34 +118,38 @@ Tasks & records:
   hfv task show <id>           full record of one task (+ its context files)
   hfv task resume <id>         re-run unfinished task <id> on its original snapshot
   hfv task follow <id>         re-run task <id> with the issue's newest thread
-                               replies plus the previous PR/context injected
+                                 replies plus the previous PR/context injected
   hfv task abandon <id>        terminate task <id> permanently (never resumed or
-                               auto-selected again; local only, no Feishu message)
+                                 auto-selected again; local only, no Feishu message)
 
-Observation & config:
-  hfv status                   services, timers, model profile, recent daemon log
-  hfv stats [hours]            ClickHouse metrics summary (default 24h; 168 = 7d)
-  hfv model [kimi|glm]         show / switch the LLM profile (both lines)
-  hfv key [show]               per-profile api-key LIST (masked), in quota-
-                                 rotation order — a quota-exhausted key is
-                                 swapped for the next one immediately, the
-                                 billing-cycle wait engages only when the
-                                 whole list is drained
+LLM profiles & keys:
+  hfv model [kimi|glm]         show / switch the LLM profile (applies to new
+                                 runs; refused while an active run is working —
+                                 quota-parked runs make the switch allowed)
+  hfv key show                 per-profile api-key LIST (masked), in quota-
+                                 rotation order — an exhausted key rotates to
+                                 the next immediately; the billing-cycle wait
+                                 engages only when the whole list is drained
   hfv key add <kimi|glm> <key> append a key (dedup; '--stdin' reads it from
                                  stdin so it never lands in the shell history;
                                  '--force' skips the provider shape guardrail)
   hfv key remove <kimi|glm> <key>
+                                 remove a key by exact value (or '--stdin')
+  hfv key rotate <kimi|glm> [n]
+                                 left-rotate the key list by n (default 1: head
+                                 moves to the end; negative rotates right) —
+                                 the NEXT run starts from the new head;
+                                 running tasks are unaffected
+
+Prompts:
   hfv prompt list              prompt files with their variants and the active pick
   hfv prompt show <base>[@v]   print a prompt (default: the active version)
   hfv prompt use <base>[@v]    select a variant (writes PROMPT_VARIANT_* into
                                  hfv.conf; bare <base> falls back to the default)
-                               remove a key by exact value (or '--stdin')
-  hfv key rotate <kimi|glm> [n]
-                               left-rotate the key list by n (default 1: the
-                                 first key moves to the end; negative n rotates
-                                 right; n must fit ±int32 — the modulo does the
-                                 real math) — the NEXT run starts from the new
-                                 head; running tasks are unaffected
+
+Misc:
+  hfv status                   services, timers, model profile, recent daemon log
+  hfv stats [hours]            ClickHouse metrics summary (default 24h; 168 = 7d)
   hfv summarize                trigger one lesson-tree sweep now
 USAGE
 }
