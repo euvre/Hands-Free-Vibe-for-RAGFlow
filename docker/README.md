@@ -72,13 +72,4 @@ TASK CONTAINER hfv-task-<ts>-s<n> (one task, throwaway, --rm)
   gitconfig.worker       container git identity (ro mount; no credentials)
   mcp-settings.worker.json  chrome-devtools-mcp config sample (copied manually
                          into sessions; not referenced by code)
-
-## Retired (history)
-
-  The slot-worker era (hfv-worker image + run-slot.sh bootstrap +
-  ~/hfv-slots/slot<n> clones) was replaced by the all-in-one hfv-task
-  container ("slot deprecation" commits, 2026-09); Dockerfile.worker /
-  build-worker.sh / worker-entrypoint.sh and framework/pr-e2e.sh (the
-  hfv-e2e-* per-PR e2e groups) are deleted. run-slot.sh survives only as the
-  --down cleanup path called from feat-deliver.sh.
 ```
