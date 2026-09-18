@@ -45,7 +45,7 @@ The framework pre-flight section below reports the service stack state inside TH
 Write the re-run report (English) to `__HFV_DIR__/scratch/pr-repr-__PR_NUM__-report.md` — the framework posts it to the PR as a comment, chained so it publishes only after your commits actually land. Structure it:
 
 1. **Verdict** — verified / verified-after-fixes / partially-verifiable (boundary named).
-2. **What was verified and how** — per claim: the exact check, the evidence, the outcome. Screenshots referenced by their absolute path for UI flows (the line publishes them to the fork's assets branch and rewrites the paths to real URLs before posting).
+2. **What was verified and how** — per claim: the exact check, the evidence, the outcome. Screenshots referenced by their absolute path for UI flows (the line publishes them to the fork's assets branch and rewrites the paths to real URLs before posting). **Screenshot discipline**: a UI round-trip claim needs the SAME field(s) visible in both the edited and the reopened screenshot — a reviewer cannot verify what scrolled out of frame; capture API read-back JSON as text output evidence too, never as prose alone.
 3. **Fixes applied** — commits with one-line reasons (empty when none).
 4. **Remaining gaps** — anything still unverified or out of scope, stated plainly.
 
