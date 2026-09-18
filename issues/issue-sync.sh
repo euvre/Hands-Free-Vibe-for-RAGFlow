@@ -283,6 +283,14 @@ def main():
             kept.append(r)  # feishu deferred (no tenant token) — stays open
             continue
         action, pr = classify(thread_rows(r.get("thread_id", ""), mid))
+        if action == "delete" and r.get("start_notice_id"):
+            # The takeover arrived AFTER our start notice — per the notice's
+            # own protocol ("@将不再生效") the in-flight run is NOT
+            # interrupted; the record stays open and settles via the run's
+            # own outcome (PR → done, failed run → retry).
+            print("issue-sync: %s takeover after start notice — ignored (run in flight)" % mid)
+            kept.append(r)
+            continue
         if action == "delete":
             # state publicly that we step aside, drop the record; our claim
             # reply stays in the thread (handover history, not recalled)

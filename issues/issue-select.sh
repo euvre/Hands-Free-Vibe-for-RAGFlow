@@ -45,6 +45,9 @@ BASE = os.environ.get("FEISHU_BASE_URL", "https://open.feishu.cn/open-apis")
 # ---- GitHub issue source (source=github, message_id=gh-<number>) ----------
 GH_BIN = os.environ.get("GH_BIN", "gh")
 GH_REPO = cfg.get("GITHUB_ISSUE_REPO", "infiniflow/ragflow")
+# issues/config calls it GITHUB_LOGIN, hfv.conf calls it OWN_LOGIN — accept both
+# (same convention as issue-sync.sh; used by the last-mile delivery check below).
+OWN_LOGIN = cfg.get("OWN_LOGIN") or cfg.get("GITHUB_LOGIN", "")
 
 
 def gh_view(num):
@@ -406,7 +409,11 @@ def main():
             dropped += 1
             print("issue-select: %s dropped (gone/recalled)" % mid)
             continue
-        if third_party_claimed(r, token):
+        # A takeover only counts BEFORE our start notice: once the run was
+        # announced ("@将不再生效"), later @-claims must not interrupt it.
+        # Re-picked records already carry start_notice_id, so a retry in
+        # flight is never abandoned out from under itself.
+        if not r.get("start_notice_id") and third_party_claimed(r, token):
             if is_gh(mid):
                 gh_comment(mid[3:], "Stepping aside — this issue now has an assignee. (automated triage)")
             elif not ir.send_reply(mid, ir.ABANDON_TEXT, token):
@@ -416,6 +423,30 @@ def main():
             print("issue-select: %s dropped (third party claimed, we step aside)" % mid)
             continue
         if r.get("select_count", 0) >= MAX_PICKS:
+            # Last-mile delivery check before writing the issue off: a run may
+            # have delivered between the previous pick and this pass — the
+            # fix reply and the PR link land while the record is still open,
+            # and failing it now posts "暂时搁置" right under the delivered
+            # fix (2026-09-18 embed-widget issue: fix reply 15:11, PR link
+            # 15:12, FAIL_NOTE 15:14). An own PR in the thread means
+            # delivered: leave the record open for sync/recorder to flip done.
+            delivered = False
+            if is_gh(mid):
+                d = gh_view(mid[3:])
+                for c in ((d or {}).get("comments") or []):
+                    if "/pull/" in (c.get("body") or "") and \
+                            (c.get("author") or {}).get("login", "") == OWN_LOGIN:
+                        delivered = True
+                        break
+            elif token:
+                _, own_pr, _, _ = ir.thread_scan(
+                    {"thread_id": r.get("thread_id", ""), "message_id": mid},
+                    token)
+                delivered = bool(own_pr)
+            if delivered:
+                print("issue-select: %s already delivered (own PR posted) — "
+                      "not failing; left for sync/recorder to flip done" % mid)
+                continue
             if is_gh(mid):
                 gh_comment(mid[3:], "We attempted this issue several times without a solid fix and are setting it aside for now — please re-triage. (automated triage)")
             elif not ir.send_reply(mid, FAIL_NOTE, token):

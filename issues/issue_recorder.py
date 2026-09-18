@@ -616,7 +616,10 @@ def main():
             removed += 1
             continue
         third, own_pr, own_claim, replies = thread_scan({"thread_id": r.get("thread_id", ""), "message_id": mid}, token)
-        if third:
+        # A takeover only counts BEFORE our start notice: once the run was
+        # announced ("@将不再生效"), a later @-claim must not interrupt the
+        # in-flight run — the record settles via the run's own outcome.
+        if third and not r.get("start_notice_id"):
             # A human took over: state publicly that we step aside, then drop
             # the record. Our claim reply STAYS in the thread (handover
             # history); only the gone path recalls it.

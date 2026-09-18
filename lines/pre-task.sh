@@ -89,7 +89,9 @@ bash "$DIR/lines/pre-claim.sh" || true
 
 # 4.5 宣告任务开始执行（claim 之后、run 之前；此后的 @接管 不再生效）。
 #    每条 issue 生命周期内只发一次（start_notice_id 持久化），重选不重复。
-python3 "$DIR/issues/issue-start-notice.py" "$DIR/issues/current${HFV_SUF}.json" >> "$DIR/logs/daemon.log" 2>&1 || true
+#    注意用本脚本顶部定义的 SUF（-s<N> 后缀）——写成未定义的 HFV_SUF 会让
+#    路径恒为 current.json（不存在），start notice 静默空转从未发出。
+python3 "$DIR/issues/issue-start-notice.py" "$DIR/issues/current${SUF}.json" >> "$DIR/logs/daemon.log" 2>&1 || true
 
 # 5. 清理工作区并同步到最新 main（快照残留 → 硬重置 → 清暂存区/工作区；
 #    在役运行持 run.lock 时自动跳过，详见 pre-clean-worktree.sh 头注释）

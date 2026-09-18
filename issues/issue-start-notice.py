@@ -21,7 +21,7 @@ from hfv_source import is_gh
 STORE = os.path.join(DIR, "issues.jsonl")
 STORE_LOCK = os.path.join(DIR, ".store.lock")
 REPLY = os.path.join(DIR, "issue-reply.py")
-NOTICE = "当前任务已经开始执行。@将不再生效。"
+NOTICE = "自动化脚本已经正式开始处理该任务，此后 @ 认领/接管 将不再生效。"
 
 
 def main():
