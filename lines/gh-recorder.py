@@ -8,8 +8,11 @@ Two jobs per pass (systemd timer, every minute; flock-guarded):
    outbox record enqueued via gh-outbox.py by line scripts or in-container
    agents. Records retry with backoff; terminal failures are logged (and for
    pr_create reported to the Feishu thread). pr_create is idempotent (reuses
-   an existing PR for the same head), replies the PR link to the originating
-   thread, and archives the PR url into tasks/<task_id>/.
+   an existing PR for the same head); comments carry an invisible idempotency
+   key (<!-- hfv-outbox:<id> -->) checked against the PR's comments before
+   posting, so a record replayed after a mid-drain crash never double-posts.
+   pr_create replies the PR link to the originating thread, and archives the
+   PR url into tasks/<task_id>/.
 
 2. SCAN tracked PRs (read side). Every PR referenced by a state==done record
    in issues/issues.jsonl (plus anything already under gh-store/) is polled
@@ -154,6 +157,30 @@ def _do_comment(rec):
     body = rec["body"]
     if not body.startswith(SIGNATURE):
         body = SIGNATURE + "\n\n" + body
+    # idempotency key: an invisible marker unique to this outbox record. The
+    # execute-then-rename drain is at-least-once — a crash between the POST
+    # and the done/ rename replays the record (PR #19823 double-comment on
+    # 2026-09-18: power loss after the POST, before the rename). The marker
+    # makes such a replay detectable.
+    marker = "<!-- hfv-outbox:%s -->" % rec["id"]
+    body = body.rstrip("\n") + "\n\n" + marker + "\n"
+    # pre-send dedup: if the marker already reached the PR (a previous
+    # execution that never got booked), skip the POST and book the record as
+    # done. A failed CHECK must never post either — it could mask a live
+    # duplicate — so it takes the normal failure path (backoff + retry).
+    # Last-100 comments (gh's window) suffice: replays land minutes after
+    # the original POST.
+    rc, out = gh(["pr", "view", str(rec["pr"]), "--repo", GITHUB_REPO,
+                  "--json", "comments", "--jq", ".comments[].body"],
+                 timeout=60)
+    if rc != 0:
+        log("comment %s: dedup pre-check failed (rc=%d) — backing off"
+            % (rec["id"], rc))
+        return False
+    if marker in out:
+        log("comment %s: marker already on pr=%s — replay suppressed"
+            % (rec["id"], rec["pr"]))
+        return True
     body_file = os.path.join(OUTBOX, ".body-%s.md" % rec["id"])
     with open(body_file, "w") as f:
         f.write(body)
