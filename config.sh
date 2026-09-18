@@ -43,7 +43,7 @@ WORK_END="${WORK_END:-20:00}"
 LESSONS_PER_TASK="${LESSONS_PER_TASK:-4}"
 SUMMARIZE_SECONDS="${SUMMARIZE_SECONDS:-900}"
 
-# 显式传入的 RAGFLOW_MAIN 优先于站点钉值：pr-e2e.sh exec 用
+# 显式传入的 RAGFLOW_MAIN 优先于站点钉值：run-container.sh 用
 # -e RAGFLOW_MAIN=<PR worktree> 把容器内的 ragflow-up.sh/build.sh 指向该 PR
 # 的 worktree；若 hfv.conf 无条件覆盖，容器里起的就是 ragflow4 的代码。
 # 未显式传入时 hfv.conf 行为完全不变。

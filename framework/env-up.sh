@@ -7,14 +7,11 @@
 #                                     # namespace — always the LLM's own
 #                                     # container (a slot worker); there is
 #                                     # no host-direct form any more
-#   env-up.sh e2e <num|audit> <wt>    # audit/review lines: bring up the e2e
-#                                     # group, then the app services inside it
 #
 # What it produces:
 #   * services at READY (or an honest NOT-READY), and
 #   * a markdown status section for prompt injection:
 #       local → $LOG_DIR/env-status${HFV_SUF}.md
-#       e2e   → $LOG_DIR/env-status-e2e-<suffix>.md
 #     The runners append it to the task prompt ("Framework pre-flight"), and
 #     the task files forbid the agent from redoing bring-up on a READY.
 #
@@ -129,54 +126,5 @@ if [[ "$MODE" == "local" ]]; then
   exit 0
 fi
 
-if [[ "$MODE" == "e2e" ]]; then
-  SUFFIX="${2:-}"
-  WT="${3:-}"
-  [[ -n "$SUFFIX" && -n "$WT" ]] || { echo "usage: env-up.sh e2e <num|audit> <worktree>" >&2; exit 2; }
-  case "$SUFFIX" in *[!0-9]*) NAME="$SUFFIX" ;; *) NAME="pr$SUFFIX" ;; esac
-  OUT="$LOG_DIR/env-status-e2e-$NAME.md"
-  UPLOG="$LOG_DIR/env-up-e2e-$NAME.log"
-
-  if bash "$DIR/framework/pr-e2e.sh" up "$SUFFIX" "$WT" >>"$UPLOG" 2>&1; then
-    grp_line="group hfv-e2e-$NAME up (service stack ready; worktree $WT mounted)"
-  else
-    grp_line="GROUP-UP FAILED — see $UPLOG; fall back to unit tiers + code-level evidence and choose INCOMPLETE per the task file"
-  fi
-  svc_line="not attempted"
-  ports_line="unavailable"
-  if [[ "$grp_line" == group* ]]; then
-    bash "$DIR/framework/pr-e2e.sh" exec "$SUFFIX" -- bash "$DIR/framework/ragflow-up.sh" >>"$UPLOG" 2>&1 || true
-    res="$(wait_status bash "$DIR/framework/pr-e2e.sh" exec "$SUFFIX" -- cat /tmp/ragflow-ready.status)"
-    verdict="${res%% *}"; secs="${res##* }"
-    case "$verdict" in
-      READY) svc_line="READY — in-group ragflow-up.sh reported all=READY after ~${secs}s" ;;
-      *)     svc_line="NOT-READY ($verdict after ~${secs}s) — check ONCE via \`bash $DIR/framework/pr-e2e.sh exec $SUFFIX -- tail -30 /tmp/ragflow-backend.log\` (and go/web logs); do NOT retry bring-up in a loop — fall back to unit tiers and choose INCOMPLETE per the task file" ;;
-    esac
-    ports_line="$(bash "$DIR/framework/pr-e2e.sh" ports "$SUFFIX" 2>/dev/null | tr '\n' ' ' | sed 's/  */ /g' || true)"
-    [[ -n "$ports_line" ]] || ports_line="unavailable"
-  fi
-  # Session keep-alive against the group's published web port, on the HOST's
-  # browser-MCP profile (the audit/review agents' chrome lives on the host).
-  login_line="not attempted (services not READY)"
-  if [[ "$svc_line" == READY* ]]; then
-    web_port="$(bash "$DIR/framework/pr-e2e.sh" ports "$SUFFIX" 2>/dev/null | sed -n 's|^29222/tcp -> 127.0.0.1:\([0-9][0-9]*\)|\1|p' | head -1)"
-    [[ -n "$web_port" ]] && login_line="$(bash "$DIR/framework/browser-ensure-login.sh" "http://127.0.0.1:$web_port" 2>/dev/null || true)"
-  fi
-  {
-    echo "## Framework pre-flight (the runner already did this — do NOT redo)"
-    echo
-    echo "- **E2E group**: $grp_line"
-    echo "- **App services in the group**: $svc_line"
-    echo "- **Host port mapping**: $ports_line (re-print anytime: \`bash $DIR/framework/pr-e2e.sh ports $SUFFIX\`)"
-    echo "- **Browser session**: $login_line"
-    if [[ "$grp_line" == group* ]]; then
-      preflight_block bash "$DIR/framework/env-preflight.sh" e2e "$SUFFIX" "$WT"
-    fi
-    echo "- **Only justified relaunch**: a service dies MID-WORK → \`bash $DIR/framework/pr-e2e.sh exec $SUFFIX -- bash $DIR/framework/ragflow-up.sh\` once, then re-check \`... -- cat /tmp/ragflow-ready.status\`. NEVER re-run \`pr-e2e.sh up\` on a READY pre-flight."
-  } | write_section "$OUT"
-  log "e2e $NAME: section written to $OUT ($svc_line)"
-  exit 0
-fi
-
-echo "usage: env-up.sh local [worktree] | e2e <num|audit> <worktree>" >&2
+echo "usage: env-up.sh local [worktree]" >&2
 exit 2

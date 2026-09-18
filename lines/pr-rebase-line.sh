@@ -132,7 +132,6 @@ while IFS=$'\t' read -r num branch url mid; do
     log "pr=$num: clean rebase auto-verified and pushed — LLM skipped"
     [[ -n "$mid" ]] && python3 "$DIR/lines/pr-follow.py" stamp "$mid" rebase_fix_at >>"$LOG_DIR/daemon.log" 2>&1 || true
     [[ -n "$mid" ]] && python3 "$DIR/lines/pr-follow.py" report-if-ready "$mid" "$num" "$branch" >>"$LOG_DIR/daemon.log" 2>&1 || true
-    bash "$DIR/framework/pr-e2e.sh" down "$num" >>"$LOG_DIR/daemon.log" 2>&1 || true
     CUR_PR=""; rm -f "$CUR_FILE"
     release_worktree "$num"
     n=$((n + 1))

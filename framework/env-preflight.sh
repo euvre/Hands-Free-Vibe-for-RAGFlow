@@ -30,17 +30,7 @@ source "$DIR/config.sh"
 
 MODE="${1:-local}"
 
-if [[ "$MODE" == "e2e" ]]; then
-  SUFFIX="${2:-}"
-  EWT="${3:-$RAGFLOW_MAIN}"
-  [[ -n "$SUFFIX" ]] || { echo "usage: env-preflight.sh e2e <num|audit> [worktree]" >&2; exit 2; }
-  # Self-delegate: $DIR is bind-mounted at the same path inside the group and
-  # exec presets cwd/RAGFLOW_MAIN to the worktree (HFV_SLOT cleared), so the
-  # local mode below runs with container-local semantics throughout.
-  exec bash "$DIR/framework/pr-e2e.sh" exec "$SUFFIX" -- bash "$DIR/framework/env-preflight.sh" local "$EWT"
-fi
-
-[[ "$MODE" == "local" ]] || { echo "usage: env-preflight.sh local [worktree] | e2e <num|audit> [worktree]" >&2; exit 2; }
+[[ "$MODE" == "local" ]] || { echo "usage: env-preflight.sh local [worktree]" >&2; exit 2; }
 WT="${2:-$RAGFLOW_MAIN}"
 
 ok=0; fixed=0; warn=0; fail=0; skip=0
@@ -66,7 +56,7 @@ report() { # report <LEVEL> <check> <detail>
 # the correct test. The MCP-launched chrome always carries
 # --remote-debugging-port.
 chr_locks=()
-for d in "$HOME"/.cache/chrome-devtools-mcp/profile* "$HOME"/hfv-slots/*/chrome-profile/profile*; do
+for d in "$HOME"/.cache/chrome-devtools-mcp/profile*; do
   [[ -d "$d" ]] || continue
   for f in "$d"/Singleton*; do [[ -e "$f" ]] && chr_locks+=("$f"); done
 done

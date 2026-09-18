@@ -351,18 +351,6 @@ pr_abandon() { # pr_abandon [review|rebase|audit|all] — kill the in-flight run
       echo "pr-$ln line: kill sent but the lock is STILL held — inspect: fuser $lock"
     fi
   done
-  # Hygiene: with no PR line running anymore, tear down leftover per-PR e2e
-  # groups (the killed run skipped its post-stage down safety net; volumes are
-  # kept). The RESIDENT audit cluster intentionally stays up.
-  others=0
-  for ln in review rebase audit ci; do
-    flock -n "$DIR/locks/pr-$ln.lock" -c true 2>/dev/null || others=1
-  done
-  if [[ "$others" == 0 ]]; then
-    for c in $(docker ps --format '{{.Names}}' 2>/dev/null | sed -n 's/^hfv-e2e-pr\([0-9][0-9]*\)$/\1/p' | sort -u); do
-      bash "$DIR/framework/pr-e2e.sh" down "$c" >/dev/null 2>&1 && echo "leftover e2e group pr$c stopped (volumes kept)"
-    done
-  fi
 }
 
 pr_restart() { # pr_restart [review|rebase|audit|all] — kill the in-flight run
@@ -852,7 +840,7 @@ PYEOF
     echo "--- model:"
     python3 "$DIR/tools/model-profile.py" show
     echo "--- containers:"
-    docker ps -a --format '  {{.Names}}\t{{.Status}}' 2>/dev/null | grep -E 'hfv-(task|worker|svc|e2e)-' | head -14
+    docker ps -a --format '  {{.Names}}\t{{.Status}}' 2>/dev/null | grep -E 'hfv-(task|svc)-' | head -14
     systemctl --user list-timers --all 'cline-feishu-triage*' --no-pager | head -8
     echo "---"
     systemctl --user list-timers "$UNIT_TIMER" "$UNIT_PRFOLLOW_TIMER" "$UNIT_REBASE_TIMER" "$UNIT_REVIEW_TIMER" "$UNIT_AUDIT_TIMER" "$UNIT_CI_TIMER" --no-pager
