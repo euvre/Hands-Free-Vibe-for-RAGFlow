@@ -10,7 +10,7 @@
 #
 #   push branch to fork → enqueue PR creation (+ci label +merge-owner reviewer)
 #   into the gh outbox → the background gh-recorder creates the PR and DMs the
-#   merge owner the link → down the slot's svc stack.
+#   merge owner the link.
 #
 # Idempotent and quiet: an absent/incomplete staging dir means the feat run
 # never reached delivery — one daemon.log line and exit 0 (the run log holds
