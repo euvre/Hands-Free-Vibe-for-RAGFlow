@@ -164,7 +164,9 @@ $ENV_STATUS_SECTION"
     # the retry budget — the $kind wait accumulator is only bumped after a
     # FULL auto-wait — and is distinctly logged as MANUAL UNLOCK in both
     # daemon.log and the run log, so it never reads as an automatic retry.
-    local flag="$HFV_UNLOCK_FLAG_DIR/pr-unlock-$tag.flag"
+    # per-instance flag (state/pr-unlock-<line>-<n>.flag) passed explicitly by
+    # the line script; the tag-derived path is the legacy fallback
+    local flag="${HFV_UNLOCK_FLAG:-$HFV_UNLOCK_FLAG_DIR/pr-unlock-$tag.flag}"
     local slept=0 manual=0 fts
     while (( slept < ws )); do
       local chunk=$(( ws - slept )); (( chunk > 15 )) && chunk=15

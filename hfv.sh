@@ -87,9 +87,11 @@ watch a running stage with: hfv follow <line>):
                                  HFV_AUDIT_DRY_RUN=1 publishes/stamps nothing
 
 PR line control (per line — review|rebase|audit|ci — or all):
-  hfv pr unlock [line|all]     cut a quota/transient retry wait NOW: the next
-                                 attempt fires immediately, free of the retry
-                                 budget, logged as MANUAL UNLOCK
+  hfv pr unlock [line|all] [n|all]
+                                 cut a quota/transient retry wait NOW (default:
+                                 every instance): the next attempt fires within
+                                 ≤15s, free of the retry budget, logged as
+                                 MANUAL UNLOCK
   hfv pr abandon [line|all]    kill the in-flight run NOW (quota burn / wedged
                                  / wrong direction). NOT terminal: the next tick
                                  re-picks the PR from GitHub state (contrast:
@@ -270,35 +272,42 @@ pr_stage() { # pr_stage <review|rebase|audit|ci> <pr-num>
 # pr-llm-run.sh and kills the current sleep slice for an immediate effect.
 # The unlocked retry does NOT consume the line's retry budget and is logged
 # as MANUAL UNLOCK (daemon.log + run log) by the consuming loop.
-pr_unlock() { # pr_unlock [review|rebase|audit|ci|all]
-  local line="${1:-all}" ln lock flag flag_dir pids p comm sleeper owner
+pr_unlock() { # pr_unlock [review|rebase|audit|ci|all] [n|all]
+  local line="${1:-all}" want_inst="${2:-all}" ln i n lock flag marker
   case "$line" in
     review|rebase|audit|ci|all) ;;
-    *) echo "usage: hfv pr unlock [review|rebase|audit|ci|all]" >&2; exit 1 ;;
+    *) echo "usage: hfv pr unlock [review|rebase|audit|ci|all] [n|all]" >&2; exit 1 ;;
   esac
-  flag_dir="${HFV_UNLOCK_FLAG_DIR:-$DIR}"
+  # The LLM retry wait lives INSIDE the line's task container — the sleeper
+  # is invisible to the host (fuser on the lock sees only the line's bash +
+  # the docker CLI). Host-visible signals replace the old sleeper hunt: the
+  # lock proves the instance is running; the llm-wait marker (written by the
+  # in-container runner on the shared repo mount) proves it is parked in a
+  # quota/transient wait. run_llm's wait is sliced (≤15s) and consumes the
+  # per-instance flag (state/pr-unlock-<line>-<n>.flag) at the next slice
+  # boundary — writing the flag alone unlocks it.
   for ln in review rebase audit ci; do
     [[ "$line" == all || "$line" == "$ln" ]] || continue
-    lock="$DIR/locks/pr-$ln.lock"; flag="$flag_dir/pr-unlock-$ln.flag"
-    # The LLM retry wait lives INSIDE the line's task container — the sleeper
-    # is invisible to the host (fuser on the lock sees only the line's bash +
-    # the docker CLI). Two host-visible signals replace the old sleeper hunt:
-    # the lock proves the line is running; the llm-wait marker (written by the
-    # in-container runner on the shared repo mount) proves it is parked in a
-    # quota/transient wait. pr-llm-run.sh's wait is sliced (≤15s) and consumes
-    # the flag at the next slice boundary — writing the flag alone unlocks it.
-    if flock -n "$lock" -c true 2>/dev/null; then
-      rm -f "$flag"
-      echo "pr-$ln line: not running (no lock holder) — nothing to unlock; stale flag (if any) removed"
-      continue
-    fi
-    if [[ ! -f "$DIR/logs/llm-wait/pr-$ln" ]]; then
-      echo "pr-$ln line: active but NOT inside an LLM retry wait — nothing to unlock"
-      continue
-    fi
-    date +%s > "$flag"                      # consumed by run_llm (fresh ≤300s)
-    echo "[$(date +%Y%m%d-%H%M%S)] hfv: manual unlock: pr-$ln line — flag written; the sliced wait (≤15s) consumes it at the next slice boundary, retry budget NOT consumed" >> "$LOG_DIR/daemon.log"
-    echo "pr-$ln line unblocked: retry fires within ≤15s (slice boundary), logged as MANUAL UNLOCK, retry budget NOT consumed"
+    n=1
+    [[ -f "$DIR/state/.scale-$ln" ]] && n="$(cat "$DIR/state/.scale-$ln" 2>/dev/null || echo 1)"
+    [[ "$n" =~ ^[0-9]+$ && "$n" -ge 1 ]] || n=1
+    for ((i = 1; i <= n; i++)); do
+      [[ "$want_inst" == all || "$want_inst" == "$i" ]] || continue
+      lock="$DIR/locks/pr-$ln-$i.lock"; flag="$DIR/state/pr-unlock-$ln-$i.flag"
+      marker="$DIR/logs/llm-wait/pr-$ln-$i"
+      if flock -n "$lock" -c true 2>/dev/null; then
+        rm -f "$flag"
+        echo "pr-$ln-$i: not running (no lock holder) — nothing to unlock; stale flag (if any) removed"
+        continue
+      fi
+      if [[ ! -f "$marker" ]]; then
+        echo "pr-$ln-$i: active but NOT inside an LLM retry wait — nothing to unlock"
+        continue
+      fi
+      date +%s > "$flag"                    # consumed by run_llm (fresh ≤300s)
+      echo "[$(date +%Y%m%d-%H%M%S)] hfv: manual unlock: pr-$ln-$i — flag written; the sliced wait (≤15s) consumes it at the next slice boundary, retry budget NOT consumed" >> "$LOG_DIR/daemon.log"
+      echo "pr-$ln-$i unblocked: retry fires within ≤15s (slice boundary), logged as MANUAL UNLOCK, retry budget NOT consumed"
+    done
   done
 }
 

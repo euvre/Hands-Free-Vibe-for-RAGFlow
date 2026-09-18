@@ -144,6 +144,7 @@ while IFS=$'\t' read -r num branch url mid; do
   # still launch services itself inside its own container). PR_PRE_SECTION
   # carries the auto-rebase handover into the prompt.
   LLM_WAIT_FLAG="$DIR/logs/llm-wait/$(basename "$LOCK_FILE" .lock)" \
+  HFV_UNLOCK_FLAG="$DIR/state/pr-unlock-rebase-$INST.flag" \
   HFV_SLOT="pr-rebase-$num" PR_TMPL="$TMPL" PR_TAG="rebase" PR_NUM="$num" PR_BRANCH="$branch" PR_URL="$url" PR_MID="$mid" \
   PR_TIMEOUT=1800 PR_PREFLIGHT=0 PR_PRE_SECTION="$auto_out" \
   GH_TOKEN="$(gh auth token 2>/dev/null || true)" \
