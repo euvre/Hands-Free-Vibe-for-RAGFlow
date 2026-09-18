@@ -4,7 +4,9 @@
 #
 # Each tick:
 #   1. collect (script): all done-PRs with NEW actionable comments/reviews
-#      (non-bot, non-own, not all-positive), plus the unreplied-item watchdog
+#      (non-bot, non-own, not all-positive — one exception: coderabbitai
+#      reviews carrying >=1 actionable finding DO trigger, pr-follow.py),
+#      plus the unreplied-item watchdog
 #      (post-done reviewer items no own reply has @mentioned since — one-shot
 #      re-queue per item; see pr-follow.py). All-positive sets are stamped
 #      and skipped by the collector.

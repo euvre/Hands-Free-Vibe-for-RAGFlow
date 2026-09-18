@@ -147,6 +147,24 @@ def is_bot(author):
     return login in BOT_LOGINS or login.endswith("bot") or login.endswith("[bot]")
 
 
+# CodeRabbit stays a bot for every state machine (human_latest_ms, the
+# unreplied watchdog, approval tracking) — but its REVIEWS carrying concrete
+# findings are real work items for the review line (2026-09-17 requirement).
+# Only signal counts: walkthrough summaries and clean bills never trigger.
+_CODERABBIT_ACTIONABLE_RE = re.compile(r"actionable comments posted:\s*(\d+)", re.IGNORECASE)
+
+
+def coderabbit_actionable_review(author, body, state):
+    """True only for a coderabbitai review with teeth: CHANGES_REQUESTED, or a
+    body reporting >=1 actionable comments."""
+    if ((author or {}).get("login") or "").lower() != "coderabbitai":
+        return False
+    if (state or "").upper() == "CHANGES_REQUESTED":
+        return True
+    m = _CODERABBIT_ACTIONABLE_RE.search(body or "")
+    return bool(m and int(m.group(1)) > 0)
+
+
 def is_own(author):
     return (((author or {}).get("login") or "").lower() == OWN_LOGIN)
 
@@ -215,6 +233,10 @@ def _effective_items(overview):
         if not is_bot(rv.get("author")) and not is_own(rv.get("author")):
             items.append((((rv.get("author") or {}).get("login")) or "?",
                           rv.get("body") or "", (rv.get("state") or "").upper()))
+        elif coderabbit_actionable_review(rv.get("author"), rv.get("body"),
+                                          rv.get("state")):
+            items.append(("coderabbitai", rv.get("body") or "",
+                          (rv.get("state") or "").upper()))
     return items
 
 
@@ -225,6 +247,9 @@ def newest_review_ms(overview):
             times.append(iso_to_ms(c.get("createdAt")))
     for rv in overview.get("reviews") or []:
         if not is_bot(rv.get("author")) and not is_own(rv.get("author")):
+            times.append(iso_to_ms(rv.get("submittedAt")))
+        elif coderabbit_actionable_review(rv.get("author"), rv.get("body"),
+                                          rv.get("state")):
             times.append(iso_to_ms(rv.get("submittedAt")))
     return max(times) if times else 0
 
