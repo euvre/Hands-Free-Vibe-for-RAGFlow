@@ -50,7 +50,7 @@ Run control:
   hfv stop                     stop the running task on ANY line (issue / feat / pr)
   hfv on | off                 enable / disable all six timers
   hfv scale <line> <n>         run <n> parallel instances of a task line
-                                 (issue|review|rebase|audit|ci|follow|feat;
+                                 (issue|review|rebase|audit|ci|follow|feat|rerun;
                                  0 = line off)
 
 Task containers (one per run, hfv-task-<ts>):
@@ -616,7 +616,7 @@ PYPS
     # Defaults: the first RUNning task, else instance 1 of the issue line.
     line="${1:-}"; inst="${2:-1}"
     if [[ -z "$line" ]]; then
-      for m in "$DIR"/.current-issue-* "$DIR"/.current-review-* "$DIR"/.current-rebase-* "$DIR"/.current-audit-* "$DIR"/.current-ci-* "$DIR"/.current-feat-*; do
+      for m in "$DIR"/.current-issue-* "$DIR"/.current-review-* "$DIR"/.current-rebase-* "$DIR"/.current-audit-* "$DIR"/.current-ci-* "$DIR"/.current-feat-* "$DIR"/.current-rerun; do
         [[ -f "$m" ]] || continue
         base="$(basename "$m")"; line="${base#.current-}"; line="${line%-*}"; inst="${base##*-}"
         break
@@ -626,9 +626,9 @@ PYPS
     case "$line" in
       issue) f="$(ls -1t "$LOG_DIR"/run-[0-9]*-s"$inst".log 2>/dev/null | head -1)" ;;
       feat)  f="$(ls -1t "$LOG_DIR"/run-feat-*.log 2>/dev/null | head -1)" ;;
-      review|rebase|audit|ci|follow)
+      review|rebase|audit|ci|follow|rerun)
              f="$(ls -1t "$LOG_DIR"/run-pr-"$line"-*.log 2>/dev/null | head -1)" ;;
-      *) echo "usage: hfv $subcmd [issue|review|rebase|audit|ci|follow|feat] [inst]" >&2; exit 1 ;;
+      *) echo "usage: hfv $subcmd [issue|review|rebase|audit|ci|follow|feat|rerun] [inst]" >&2; exit 1 ;;
     esac
     if [[ -z "$f" ]]; then
       echo "no run log for $line $inst yet"
