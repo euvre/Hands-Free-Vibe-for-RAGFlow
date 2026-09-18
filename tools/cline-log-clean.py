@@ -62,4 +62,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass  # Ctrl-C on hfv follow --clean: exit quietly, no traceback
+    except BrokenPipeError:
+        sys.stdout.close()  # downstream closed (e.g. | head)
