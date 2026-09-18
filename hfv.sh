@@ -58,7 +58,8 @@ Task containers (one per run, hfv-task-<ts>):
                                  latest run log), plus the audit and ci lines
   hfv log [line] [inst]        last 40 lines of a line instance's run log
                                  (no args: the first RUNning task)
-  hfv follow [line] [inst]     tail -f the same log
+  hfv follow [line] [inst]     tail -f the same log (--clean: complete
+                               per-iteration content instead of raw JSONL)
 
 Issue line:
   hfv issue log                last 40 lines of the latest issue-line run log
@@ -612,9 +613,15 @@ PYPS
     ;;
   log|follow)
     subcmd="$1"; shift
-    # hfv log|follow [line] [inst]: the run log of a line instance.
+    # hfv log|follow [line] [inst] [--clean]: the run log of a line instance.
+    # --clean renders each iteration's COMPLETE content instead of the raw
+    # token-fragment JSONL (tools/cline-log-clean.py).
     # Defaults: the first RUNning task, else instance 1 of the issue line.
+    clean=0
+    for a in "$@"; do [[ "$a" == "--clean" ]] && clean=1; done
     line="${1:-}"; inst="${2:-1}"
+    [[ "$line" == "--clean" ]] && line=""
+    [[ "$inst" == "--clean" ]] && inst=1
     if [[ -z "$line" ]]; then
       for m in "$DIR"/.current-issue-* "$DIR"/.current-review-* "$DIR"/.current-rebase-* "$DIR"/.current-audit-* "$DIR"/.current-ci-* "$DIR"/.current-feat-* "$DIR"/.current-rerun; do
         [[ -f "$m" ]] || continue
@@ -633,11 +640,20 @@ PYPS
     if [[ -z "$f" ]]; then
       echo "no run log for $line $inst yet"
     elif [[ "$subcmd" == "log" ]]; then
-      tail -n 40 "$f"
+      if [[ $clean -eq 1 ]]; then
+        tail -n 400 "$f" | python3 "$DIR/tools/cline-log-clean.py" | tail -n 60
+      else
+        tail -n 40 "$f"
+      fi
     else
       echo "# following $line $inst: $f"
-      tail -n 20 "$f"
-      tail -f "$f"
+      if [[ $clean -eq 1 ]]; then
+        tail -n 400 "$f" | python3 "$DIR/tools/cline-log-clean.py" | tail -n 40
+        tail -f "$f" | python3 "$DIR/tools/cline-log-clean.py"
+      else
+        tail -n 20 "$f"
+        tail -f "$f"
+      fi
     fi
     ;;
   issue)
