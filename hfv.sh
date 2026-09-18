@@ -280,28 +280,25 @@ pr_unlock() { # pr_unlock [review|rebase|audit|ci|all]
   for ln in review rebase audit ci; do
     [[ "$line" == all || "$line" == "$ln" ]] || continue
     lock="$DIR/locks/pr-$ln.lock"; flag="$flag_dir/pr-unlock-$ln.flag"
-    # Lock holders = the line's bash (fd 9) plus any child that inherited
-    # fd 9. During an LLM retry wait the sleep child holds it too — that is
-    # the only state a manual unlock makes sense in.
-    pids="$(fuser "$lock" 2>/dev/null | tr -cs '0-9' '\n' | grep -E '^[0-9]+$' | sort -u || true)"
-    if [[ -z "$pids" ]]; then
+    # The LLM retry wait lives INSIDE the line's task container — the sleeper
+    # is invisible to the host (fuser on the lock sees only the line's bash +
+    # the docker CLI). Two host-visible signals replace the old sleeper hunt:
+    # the lock proves the line is running; the llm-wait marker (written by the
+    # in-container runner on the shared repo mount) proves it is parked in a
+    # quota/transient wait. pr-llm-run.sh's wait is sliced (≤15s) and consumes
+    # the flag at the next slice boundary — writing the flag alone unlocks it.
+    if flock -n "$lock" -c true 2>/dev/null; then
       rm -f "$flag"
       echo "pr-$ln line: not running (no lock holder) — nothing to unlock; stale flag (if any) removed"
       continue
     fi
-    sleeper=""; owner=""
-    for p in $pids; do
-      comm="$(cat "/proc/$p/comm" 2>/dev/null || true)"
-      if [[ "$comm" == "sleep" ]]; then sleeper="$p"; else owner="$p"; fi
-    done
-    if [[ -z "$sleeper" ]]; then
-      echo "pr-$ln line: active (pid ${owner:-?}) but NOT inside an LLM retry wait — nothing to unlock"
+    if [[ ! -f "$DIR/logs/llm-wait/pr-$ln" ]]; then
+      echo "pr-$ln line: active but NOT inside an LLM retry wait — nothing to unlock"
       continue
     fi
     date +%s > "$flag"                      # consumed by run_llm (fresh ≤300s)
-    kill "$sleeper" 2>/dev/null || true     # cut the current slice: immediate
-    echo "[$(date +%Y%m%d-%H%M%S)] hfv: manual unlock: pr-$ln line (owner pid $owner, sleeper pid $sleeper cut) — next attempt fires immediately, retry budget NOT consumed" >> "$LOG_DIR/daemon.log"
-    echo "pr-$ln line unblocked (owner pid $owner): retry fires immediately, logged as MANUAL UNLOCK, retry budget NOT consumed"
+    echo "[$(date +%Y%m%d-%H%M%S)] hfv: manual unlock: pr-$ln line — flag written; the sliced wait (≤15s) consumes it at the next slice boundary, retry budget NOT consumed" >> "$LOG_DIR/daemon.log"
+    echo "pr-$ln line unblocked: retry fires within ≤15s (slice boundary), logged as MANUAL UNLOCK, retry budget NOT consumed"
   done
 }
 
