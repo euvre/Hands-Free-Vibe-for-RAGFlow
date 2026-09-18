@@ -10,3 +10,10 @@ APP_SECRET=<app_secret>
 # glm 档案下截图视觉转写用的 kimi（issue-vision.py 专用）
 KIMI_API_KEY=<sk-...>
 KIMI_BASE_URL=<https://...>
+
+# ---- 飞书 issue 表格回写（issues/issue-sheet.py；均可选，缺省用内置默认）----
+# bug 已登记在表格时：交付后把 PR 链接写入备注(M)列、研发负责(H)列补 SHEET_OWNER；
+# PR merged 后把已修复(G)列填 Y。未登记的 bug 一律不动。
+# SHEET_TOKEN=<spreadsheet token>
+# SHEET_TAB=<sheetId，非标签名>
+# SHEET_OWNER=@肖毅

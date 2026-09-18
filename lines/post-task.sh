@@ -25,6 +25,11 @@ bash "$DIR/lines/post-reply.sh" || true
 #    回复 PR 链接到原话题。deliver/ 文件缺失时自动跳过（主任务未到交付步）。
 bash "$DIR/lines/post-deliver.sh" || true
 
+# 2.5 交付回写飞书 issue 表格（纯脚本无 LLM）：等 outbox 建出 PR（最多
+#     ~150s）后，PR 链接写入表格备注列、研发负责补 @肖毅（仅 bug 已登记在
+#     表格时；未登记不动）。超时未建出由 issue-sync 的 done 翻转兜底。
+bash "$DIR/lines/post-sheet.sh" || true
+
 # 3. issue 状态同步（纯规则无 LLM）：第三方认领/发 PR → 删除记录（并发
 #    "我现在放弃该任务。"回复）；我方话题回复含 PR → done；消息消失 → 删除记录
 bash "$DIR/issues/issue-sync.sh" || true

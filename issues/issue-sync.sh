@@ -321,6 +321,16 @@ def main():
             r["pr"] = pr
         changed += 1
         print("issue-sync: %s -> %s%s" % (mid, action, " " + pr if pr else ""))
+        if action == "done" and pr and not is_gh(mid):
+            # sheet write-back backstop: covers deliveries whose outbox
+            # pr_create landed after post-sheet.sh's bounded wait — rerun
+            # the same (idempotent) fill now that the PR link is settled
+            try:
+                import subprocess as _sp
+                _sp.run([sys.executable, os.path.join(base_dir, "issue-sheet.py"),
+                         "deliver", mid, pr], capture_output=True, timeout=60)
+            except Exception:
+                pass
         kept.append(r)
 
     if changed:

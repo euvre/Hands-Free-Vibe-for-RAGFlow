@@ -113,6 +113,7 @@ def save_flips(flips):
     if DRY_RUN or not flips:
         return 0
     lock_path = os.path.join(DIR, "issues", ".store.lock")
+    merged_prs = []
     with open(lock_path, "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         try:
@@ -121,6 +122,9 @@ def save_flips(flips):
             for r in fresh:
                 f = flips.get(r.get("message_id"))
                 if f:
+                    if f.get("state") == "merged" and r.get("state") != "merged" \
+                            and r.get("pr"):
+                        merged_prs.append(r["pr"])
                     r.update(f)
                     applied += 1
             tmp = STORE + ".tmp"
@@ -128,9 +132,18 @@ def save_flips(flips):
                 for r in fresh:
                     fh.write(json.dumps(r, ensure_ascii=False) + "\n")
             os.replace(tmp, STORE)
-            return applied
         finally:
             fcntl.flock(lock, fcntl.LOCK_UN)
+    # outside the store lock: sheet write-back is network I/O (best-effort) —
+    # a PR that just flipped to merged gets 已修复=Y on its sheet row
+    for pr_url in merged_prs:
+        try:
+            subprocess.run([sys.executable,
+                            os.path.join(DIR, "issues", "issue-sheet.py"),
+                            "merged", pr_url], capture_output=True, timeout=60)
+        except Exception:
+            pass
+    return applied
 
 
 def run(cmd, timeout_s=30, cwd=None):
