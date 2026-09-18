@@ -424,15 +424,24 @@ def thread_scan(msg, token):
                 pass
             if "This message was recalled" in body:
                 continue
+            # Takeover semantics per our claim reply's own protocol
+            # ("@自己即可"): a claim is a user @-ing THEMSELVES. Humans @-ing
+            # each other to discuss the issue (the normal case) must NOT count
+            # as a takeover — the old any-mention test dropped delivered
+            # tasks' records and posted bogus "我现在放弃该任务。" notes.
+            sender = it.get("sender", {})
+            sid = sender.get("id", "")
             mention = bool(it.get("mentions")) or "<at " in body
+            self_claim = bool(sid) and any(
+                m.get("id") == sid for m in it.get("mentions") or [])
             m = PR_RE.search(body)
             pr_link = m.group(0) if m else None
-            if it.get("sender", {}).get("sender_type") == "app":
+            if sender.get("sender_type") == "app":
                 if pr_link:
                     own_pr = pr_link  # later replies win
                 if mention:
                     own_claim = True
-            elif mention or pr_link:
+            elif self_claim or pr_link:
                 third_handled = True
             rtext = extract_text(it).strip()
             _, rres = extract_content(it)

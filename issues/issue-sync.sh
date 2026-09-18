@@ -173,8 +173,15 @@ def main():
                     body = it["body"]["content"]
                 except Exception:
                     pass
-                sender_type = (it.get("sender") or {}).get("sender_type", "")
-                claimed = bool(it.get("mentions")) or "<at " in body
+                sender = it.get("sender") or {}
+                sender_type = sender.get("sender_type", "")
+                # a takeover claim is a user @-ing THEMSELVES (the claim
+                # reply's own protocol); humans @-ing each other to discuss
+                # the issue are NOT a takeover (old any-mention test caused
+                # false "third party handled" drops of delivered tasks)
+                sid = sender.get("id", "")
+                claimed = bool(sid) and any(
+                    mm.get("id") == sid for mm in it.get("mentions") or [])
                 rows.append((body, sender_type, claimed))
             if data.get("has_more") and data.get("page_token"):
                 page = data["page_token"]
@@ -185,15 +192,20 @@ def main():
         """(action, pr): delete on third-party claim/PR; done on own PR;
         otherwise (None, None) — a bare own claim keeps the record open."""
         own_pr = None
+        third = False
         for body, sender_type, claimed in rows:
             m = PR_RE.search(body)
             if sender_type == "app":
                 if m:
                     own_pr = m.group(0)  # later replies win
             elif m or claimed:
-                return "delete", None
+                third = True
+        # our delivered PR settles it: later human chatter (even a late
+        # self-claim) must not delete a delivered task's record
         if own_pr:
             return "done", own_pr
+        if third:
+            return "delete", None
         return None, None
 
     def message_gone(mid):
