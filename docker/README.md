@@ -1,16 +1,10 @@
-# docker/ — N-slot concurrency infrastructure
+# docker/ — hfv-task all-in-one task container
 
-Turns the daemon from "one LLM run at a time on the host" into "N worker
-containers, each running one issue task", WITHOUT docker-in-docker.
-
-## Why no DinD (design constraint)
-
-Running a docker daemon inside each worker container (true DinD) needs
-`--privileged`, overlayfs-on-overlayfs storage, and manual cgroup wiring —
-fragile and a security hole. We don't need it: a task run only needs docker
-to manage the RAGFlow service stack (ES/MySQL/Redis/MinIO/NATS), and that is
-done through the regular HOST daemon via the mounted `/var/run/docker.sock`
-(worker ships docker CLI + compose plugin only, `--group-add <socket-gid>`).
+Every task run (issue fix, PR review/rebase/ci/audit/repr, feat) executes in
+ONE throwaway container off the frozen `hfv-task` image. The image bakes the
+full service stack (MySQL / Elasticsearch / Redis / MinIO / NATS via
+supervisord), the model providers and the browser login state, so a task
+container needs nothing from the host but bind mounts.
 
 ## Architecture
 
@@ -18,129 +12,73 @@ done through the regular HOST daemon via the mounted `/var/run/docker.sock`
 HOST (framework, systemd template units)
   cline-feishu-triage@<n>.timer → cline-feishu-triage@<n>.service
     Environment=HFV_SLOT=<n> flows through EVERY framework script:
-      ExecStartPre   pre-task.sh     (Feishu scan+vision gated to slot 1)
-      ExecStart      run-slot.sh <n> (bootstrap + docker run, see below)
-      ExecStartPost  post-task.sh    (reply / deliver / release / close)
+      ExecStartPre   pre-task.sh      (Feishu scan+vision on slot 1; select →
+                                       claim → start notice → sheet write-back)
+      ExecStart      run-container.sh (docker run --rm hfv-task … run-task.sh)
+      ExecStartPost  post-task.sh     (reply / deliver / sheet / sync /
+                                       release / close)
     OnFailure=cline-feishu-post-onfail@<n>.service (same post group)
 
-  Per-slot state, derived from HFV_SUF="-s<n>" (empty = legacy host run,
-  byte-identical historical names — zero regression while both coexist):
-    run-s<n>.lock  issues/current-s<n>.json  deliver-s<n>/
-    logs/.rested-s<n>  logs/run-<ts>-s<n>.log (still matches the
-    summarize-run.sh `run-2*.log` glob)  tasks/.current-s<n>
-    tasks/.last-run-info-s<n>
-  Shared state, lock-protected:
-    issues/issues.jsonl + .store.lock    — in_flight_slot markers (slot n,
-      or "host" for the legacy line) make a pick exclusive across ALL lines;
-      released by post-task (issue-release.py), self-heal in issue-select.sh
-      when the owning line's run-s<n>.lock / run.lock is free (crash path)
-    tasks/tasks.jsonl + .registry.lock   — tasks.py assign/close/abandon
-      serialized (task_id stays monotonic across slots)
-    ClickHouse (cline-clickhouse.service, loopback-only) exposed to
-      containers via cline-ch-forward.service (socat 18123→8123, range
-      172.16.0.0/12); workers reach it as host.docker.internal:18123
-
-WORKER CONTAINER hfv-worker-s<n> (one issue task, ~5-7 GB RSS)
-  Image = SYSTEM LAYER ONLY: chrome, node 22 + cline CLI + chrome-devtools-mcp,
-  go 1.26, uv, docker CLI + compose plugin, socat, tini. No repo, no venv.
-  worker-entrypoint.sh lives BOTH baked into the image (/usr/local/bin, keeps
-  bare `docker run hfv-worker` usable for debugging) and in the mounted hfv
-  repo — rebuild only when the toolchain changes, edit the mounted copy to
-  iterate on the port-forward table.
+TASK CONTAINER hfv-task-<ts>-s<n> (one task, throwaway, --rm)
+  task-entrypoint.sh (tini → supervisord): the whole service stack starts
+  INSIDE the container (docker/task-services.conf), data lives on container
+  volumes — containers never share state.
   Mounts (same paths inside and outside, so prompt-baked paths always work):
-    /home/inf/hands-free-vibe           framework repo (rw: logs, deliver,
-                                         breadcrumbs, model-keys.json)
+    /home/inf/hands-free-vibe           framework repo (rw: logs/, deliver-s*/,
+                                        state/, locks/)
     /home/inf/.cline/data/sessions      shared sessions (breadcrumb matching
                                          keys on cwd — unique per slot)
-    /home/inf/hfv-slots/slot<n>/        ragflow clone + chrome login profile
-                                         + uv/go/npm caches (persists)
-    /home/inf/.gitconfig                docker/gitconfig.worker (ro — no gh
-                                         credential helper inside workers)
-    /var/run/docker.sock                sibling stack management only
-  Inside the container the task is EXACTLY the host dev flow:
-    - fresh ragflow clone at /home/inf/hfv-slots/slot<n>/ragflow
-      (--reference to the host repo: no history re-download; remotes
-      mirrored verbatim so host-side delivery pushes identically)
-    - ragflow-up.sh starts the py/go/web stacks as container processes on
-      container-localhost (9380/9383/9384/9222 exist only inside → zero
-      host port conflicts across slots and with the host dev stack)
-    - conf/service_conf.yaml stays BYTE-IDENTICAL to origin/main: instead of
-      editing its localhost endpoints, worker-entrypoint.sh runs socat
-      forwards on container-localhost:
-        1200→es01:9200  3306→mysql:3306  6379→redis:6379
-        9000→minio:9000 9001→minio:9001 4222→nats:4222
-        6380→host.docker.internal:6380   (host tei-cpu, shared+stateless)
-        8123→host.docker.internal:18123  (host ClickHouse via ch-forward)
-    - chrome-devtools-mcp runs headless with a per-slot userDataDir (browser
-      login state persists across runs/retries, like on the host)
-
-  Sibling service stack, per slot, via the socket:
-    docker compose -p hfv-svc-<n> --env-file <ragflow4>/docker/.env \
-      -f docker/svc-compose.yml up -d
-    (es01, mysql, redis, minio, nats — NO published host ports; the worker
-     was started with --network hfv-net-<n> so DNS resolves both ways.
-     Volumes are project-scoped → per-slot service data persists across
-     ticks: logins, datasets and ES indices survive between runs.
-     The SAME host .env provides the passwords the tracked
-     conf/service_conf.yaml expects. tei is deliberately NOT duplicated:
-     embeddings are stateless and shared from the host container.)
-
-  PID namespace isolation also fixes the old hazard of ragflow-up.sh's
-  global pattern kills: a worker only sees its own processes, and
-  mcp-cleanup.sh treats tini (container PID 1) as an orphan parent.
+    /home/inf/hfv-cache/{uv,go,go-build,npm}  build caches (shared, persist)
+    /home/inf/ragflow-native-libs       ORT/native libs (build.sh hardcodes it)
+    <ragflow4> + <worktree>             the main clone and this task's worktree
+    docker/gitconfig.worker             git identity ONLY (ro — no credential
+                                         helper, see secrets boundary)
+  NOT mounted: /var/run/docker.sock — the worker-era sibling-stack management
+  is gone; the service stack runs inside, not beside, the container.
 
 ## Secrets boundary
 
-  Into the container:  model keys (ride the hfv repo mount via
-                       model-keys.json → -P/-m/-k CLI args), git identity
-                       (docker/gitconfig.worker: user only, NO credential
-                       helper).
-  NOT into containers: gh token — push/PR stay host-side: post-deliver.sh
-                       runs issue-deliver.sh from the SLOT workdir
-                       (config.sh points RAGFLOW_MAIN at the slot clone when
-                       HFV_SLOT is set) using the host ~/.gitconfig + gh.
-                       Feishu app credentials — reply/sync/claim stay
-                       host-side in the pre/post groups.
+  Task containers carry ZERO credentials. git push / gh / Feishu writes all
+  stay host-side: the agent stages deliverables as files under deliver-s<n>/
+  (reply-*.md, branch.txt, pr-title.txt, pr-body.md, shots/), the post group
+  ships them, and every GitHub mutation goes through the disk outbox
+  (lines/gh-outbox.py → gh-recorder; comments carry an idempotency key).
+  Exception: PR read access (comment inventory) for the review/audit lines —
+  run-container.sh --creds mounts ~/.config/gh read-only and exports GH_TOKEN.
+  Feishu app credentials never enter containers: reply/sync/claim/sheet
+  write-back all run in the host-side pre/post groups.
 
-## Slot lifecycle
+## Shared state
 
-  1. run-slot.sh bootstraps the slot once (clone, caches, image, svc stack)
-     and stays a no-op-fast path afterwards
-  2. pre group: issue-select picks ONE open record under the store lock,
-     marks it in_flight_slot=<n>; tasks.py assign numbers it under the
-     registry lock into the slot's own current file
-  3. docker run --rm hfv-worker → worker-entrypoint.sh (socat + readiness)
-     → run-task.sh (per-slot run-s<n>.lock, same retry/breadcrumb logic)
-  4. host post group consumes the slot's deliver-s<n>/ files, pushes + PRs
-     from the slot workdir, replies in the thread, releases the in-flight
-     marker, closes the task row
-  5. slot stack keeps idling (warm next tick); `hfv slot down <n>` stops it
-     without dropping data (`--purge` also drops volumes + the clone)
+  issues/issues.jsonl + locks/.store.lock — in_flight_slot markers make a pick
+    exclusive across all lines; released by post-task (issue-release.py),
+    self-heal in issue-select.sh when the owning line's locks/run-s<n>.lock is
+    free (crash path)
+  tasks/tasks.jsonl + tasks/.registry.lock — tasks.py assign/close serialized
+  locks/    — every flock file (run*, pr-*, .store.lock, .gh-recorder.lock, …)
+  state/    — runtime markers (.scale-*, .current-*, .model-profile, …)
+  ClickHouse (cline-clickhouse.service, loopback-only) is exposed to
+    containers via cline-ch-forward.service (socat 18123→8123); containers
+    reach it as host.docker.internal:18123 (--add-host …:host-gateway).
 
-## Enabling slots (rollout)
+## Files here
 
-  One-time:
-    systemctl --user daemon-reload
-    systemctl --user enable --now cline-ch-forward.service
-    bash docker/build-worker.sh        # or let run-slot.sh build on demand
+  Dockerfile.task        the hfv-task image (frozen golden base)
+  task-entrypoint.sh     PID-1 child: supervisord + env sync + login refresh
+  task-services.conf     the in-container service stack definition
+  svc-compose.yml        legacy per-slot host service stack — still referenced
+                         by the idle-stack reaper (pre-task.sh) and
+                         run-slot.sh --down cleanup
+  gitconfig.worker       container git identity (ro mount; no credentials)
+  mcp-settings.worker.json  chrome-devtools-mcp config sample (copied manually
+                         into sessions; not referenced by code)
 
-  The legacy single-run units (cline-feishu-triage.service/.timer) keep
-  working untouched — HFV_SLOT unset means "the historical host run". To
-  parallelize, DISABLE the legacy timer and enable one template timer per
-  slot (slot 1 also does the Feishu recorder/vision sweep for everyone):
+## Retired (history)
 
-    systemctl --user disable --now cline-feishu-triage.timer
-    hfv slot up 1
-    # trigger immediately instead of waiting for the first tick (~30s):
-    hfv slot run 1          # or: hfv slot run all — every enabled slot
-    # later, memory permitting:
-    hfv slot up 2
-
-  Memory budget (~62 GB host): each slot ≈ ES ≤8G + mysql ~1G + minio/redis/
-  nats ~1G + worker 5-7G ≈ 15-17G. Start with one slot beside the host dev
-  stack (~29G available today), add the second after the host stack retires.
-
-  Known shared leftovers (documented, acceptable):
-    - tasks/.pin is a single manual pin file (hfv task resume/follow); a
-      pinned task is also in_flight-marked, so slots still cannot collide
-    - Feishu claim replies are mid-keyed and unique across slots
+  The slot-worker era (hfv-worker image + run-slot.sh bootstrap +
+  ~/hfv-slots/slot<n> clones) was replaced by the all-in-one hfv-task
+  container ("slot deprecation" commits, 2026-09); Dockerfile.worker /
+  build-worker.sh / worker-entrypoint.sh and framework/pr-e2e.sh (the
+  hfv-e2e-* per-PR e2e groups) are deleted. run-slot.sh survives only as the
+  --down cleanup path called from feat-deliver.sh.
+```
