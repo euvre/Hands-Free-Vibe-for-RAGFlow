@@ -103,10 +103,11 @@ if [[ -f "$RAGFLOW_MAIN/$TOKLIB" && ! -f "$WT/$TOKLIB" ]]; then
   mkdir -p "$WT/$(dirname "$TOKLIB")"
   cp "$RAGFLOW_MAIN/$TOKLIB" "$WT/$TOKLIB"
 fi
-# runtime assets not in git: deepdoc models + NLTK data. Symlink the clone's
-# copies into the worktree (the clone is mounted at the same path in-container,
-# so the links resolve there).
-for d in rag/res/deepdoc ragflow_deps/nltk_data; do
+# runtime assets not in git: deepdoc models + NLTK data + the tiktoken BPE
+# table (the Go tokenizer fatals without ragflow_deps/cl100k_base.tiktoken).
+# Symlink the clone's copies into the worktree (the clone is mounted at the
+# same path in-container, so the links resolve there).
+for d in rag/res/deepdoc ragflow_deps/nltk_data ragflow_deps/cl100k_base.tiktoken; do
   if [[ -e "$RAGFLOW_MAIN/$d" && ! -e "$WT/$d" ]]; then
     mkdir -p "$WT/$(dirname "$d")"
     ln -s "$RAGFLOW_MAIN/$d" "$WT/$d"

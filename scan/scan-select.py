@@ -67,7 +67,7 @@ def cfg(key, default):
 
 DEFAULT_EXTS = ".py,.go,.ts,.tsx,.js,.jsx,.mjs,.cjs"
 DEFAULT_EXCLUDE = ("vendor/,third_party/,node_modules/,dist/,build/,docs/,doc/,"
-                   ".github/,docker/,deploy/,testdata/,test/,tests/,"
+                   ".github/,docker/,deploy/,testdata/,test/,tests/,__tests__/,"
                    "web/public/,conf/,helm/,.min.js,"
                    ".generated.,_generated,.pb.go,/mocks/,mock_")
 MAX_FILE_BYTES = 200 * 1024   # bigger files are usually generated/bundled
@@ -158,10 +158,13 @@ def eligible(path, repo=None):
     if ext not in eligible.exts:
         return False
     # test files themselves are never audit targets: pytest test_*.py /
-    # *_test.py, Go *_test.go (bare substrings would false-positive on
-    # paths like latest_*/contest_*, so match the basename only)
+    # *_test.py, Go *_test.go, JS/TS *.test.* / *.spec.* (bare substrings
+    # would false-positive on paths like latest_*/contest_*, so match the
+    # basename only)
     base = path.rsplit("/", 1)[-1]
     if base.startswith("test_") or base.endswith(("_test.go", "_test.py")):
+        return False
+    if ".test." in base or ".spec." in base:
         return False
     for pat in eligible.exclude:
         if pat.endswith("/"):
@@ -357,7 +360,10 @@ def cmd_report(slot):
         if bf:
             buckets.setdefault(bf["bucket"], {"scanned": 0, "hits": 0})["hits"] += 1
         state["zero_hit_rounds"] = 0
-    elif outcome in ("clean", "blocked"):
+    elif outcome == "clean":
+        # only a genuine audit counts toward the zero-hit streak; "blocked"
+        # (infra failure / malformed batch) says nothing about the code and
+        # must not push the window around
         state["zero_hit_rounds"] = state.get("zero_hit_rounds", 0) + 1
         limit = int(cfg("SCAN_ZERO_HIT_EXPAND", 3))
         if window["mode"] == "auto" and state["zero_hit_rounds"] >= limit:
@@ -444,8 +450,13 @@ def cmd_window(args):
 # -------------------------------------------------------------- self-test ---
 
 def self_test():
-    global STATE
-    STATE = os.path.join(tempfile.mkdtemp(prefix="scan-select-test-"), "state.json")
+    # Isolate BOTH runtime paths: cmd_report writes current-9.json /
+    # deliver-9/ under DIR — without this, the test once overwrote a real
+    # scan batch mid-run (the live LLM then read synthetic placeholder files).
+    global STATE, DIR
+    tmp = tempfile.mkdtemp(prefix="scan-select-test-")
+    STATE = os.path.join(tmp, "state.json")
+    DIR = tmp
     init_filter()
     now = int(time.time())
     day = 86400

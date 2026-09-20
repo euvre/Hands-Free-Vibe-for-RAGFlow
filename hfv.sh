@@ -486,8 +486,18 @@ case "${1:-help}" in
     systemctl --user enable --now "$UNIT_TIMER" "$UNIT_PRFOLLOW_TIMER" "$UNIT_REBASE_TIMER" "$UNIT_REVIEW_TIMER" "$UNIT_AUDIT_TIMER" "$UNIT_CI_TIMER" "$UNIT_SCAN_TIMER" "$UNIT_DOCKERPRUNE_TIMER" && echo "timers enabled (triage + pr-follow + pr-review + pr-rebase + pr-audit + pr-ci + scan + docker-prune)"
     ;;
   off)
-    systemctl --user stop "$UNIT_TIMER" "$UNIT_PRFOLLOW_TIMER" "$UNIT_REBASE_TIMER" "$UNIT_REVIEW_TIMER" "$UNIT_AUDIT_TIMER" "$UNIT_CI_TIMER" "$UNIT_SCAN_TIMER" "$UNIT_DOCKERPRUNE_TIMER"; systemctl --user disable "$UNIT_TIMER" "$UNIT_PRFOLLOW_TIMER" "$UNIT_REBASE_TIMER" "$UNIT_REVIEW_TIMER" "$UNIT_AUDIT_TIMER" "$UNIT_CI_TIMER" "$UNIT_SCAN_TIMER" "$UNIT_DOCKERPRUNE_TIMER"
-    echo "timers disabled (triage + pr-follow + pr-review + pr-rebase + pr-audit + pr-ci + scan + docker-prune)"
+    # Disable every ENABLED line timer by walking the wants symlinks — the
+    # fixed-name list is NOT enough: triage instances are template units
+    # (cline-feishu-triage@1.timer etc.) and `disable cline-feishu-triage.timer`
+    # never touches their symlinks, so they stayed enabled across reboots and
+    # kept refiring the post-boot container stampede that livelocked the host.
+    # cline-gh-recorder.timer stays: the lightweight host-side GitHub sync loop
+    # (no containers, no LLM) is deliberately left running.
+    for l in "$HOME"/.config/systemd/user/timers.target.wants/cline-feishu-*.timer; do
+      [[ -e "$l" ]] || continue
+      systemctl --user disable --now "$(basename "$l")" 2>/dev/null
+    done
+    echo "timers disabled (every enabled cline-feishu-* line timer; gh-recorder untouched)"
     ;;
   scale)
     # hfv scale <line> <n> — run <n> parallel instances of a task line
