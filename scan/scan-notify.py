@@ -11,6 +11,7 @@ Bot channel only (tenant_access_token from issues/config).
   scan-notify.py [text ...]              new group message; prints message_id
   scan-notify.py --file <path>           new message with the file's content
   scan-notify.py --reply-to <mid> [text] reply into <mid>'s thread
+  scan-notify.py --recall <mid>          recall (withdraw) a message the bot sent
 
 Prints the created message_id on success. Exit 0 sent, 1 usage/config,
 2 API failure. Text is truncated to 3000 chars (group messages should be
@@ -91,6 +92,23 @@ def main():
     args = sys.argv[1:]
     reply_to = ""
     text = ""
+    if args[:1] == ["--recall"] and len(args) == 2:
+        cfg = load_config()
+        try:
+            token = tenant_token(cfg)
+            r = api(cfg, "DELETE", "/im/v1/messages/%s" % args[1], token=token)
+        except urllib.error.HTTPError as e:
+            print("scan-notify recall: HTTP %s: %s" % (e.code, e.read()[:300]), file=sys.stderr)
+            return 2
+        except Exception as e:
+            print("scan-notify recall: %s" % e, file=sys.stderr)
+            return 2
+        if r.get("code") != 0:
+            print("scan-notify recall: API code=%s msg=%s" % (r.get("code"), r.get("msg")),
+                  file=sys.stderr)
+            return 2
+        print("recalled %s" % args[1])
+        return 0
     if args[:1] == ["--reply-to"] and len(args) >= 2:
         reply_to = args[1]
         args = args[2:]
