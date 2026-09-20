@@ -102,6 +102,33 @@ def tenant_token(cfg):
     return r["tenant_access_token"]
 
 
+def save_config_value(key, value):
+    """Persist one KEY=VALUE into issues/config (replace in place or append)."""
+    lines = open(CONFIG).read().splitlines()
+    out, done = [], False
+    for line in lines:
+        if not done and line.startswith(key + "="):
+            out.append("%s=%s" % (key, value))
+            done = True
+        else:
+            out.append(line)
+    if not done:
+        out.append("%s=%s" % (key, value))
+    with open(CONFIG, "w") as f:
+        f.write("\n".join(out) + "\n")
+
+
+def is_own_bot_msg(cfg, msg):
+    """True when the message was sent by OUR app (scan-line group reports,
+    claim replies, etc.) — such messages must never be ingested as issues:
+    a scan-line report once got recorded as one and burned three selections
+    on itself. Bots of OTHER apps stay recordable (they may be reporting
+    real bugs). Note the wire shape: for sender_type == "app" the sender id
+    is the APP_ID (cli_*), not an open_id."""
+    s = msg.get("sender", {}) or {}
+    return s.get("sender_type") == "app" and s.get("id") == cfg.get("APP_ID")
+
+
 def fetch_message(mid, token):
     """Return the live message dict, the string "gone" (recalled / deleted /
     not found), or "unknown" (transient failure — never treated as gone)."""
@@ -700,6 +727,10 @@ def main():
                 continue
             if msg.get("parent_id") or msg.get("root_id"):
                 continue  # only root messages (thread starters)
+            # Never self-ingest our own bot's root messages (scan-line
+            # reports, etc.); other apps' bots stay recordable.
+            if is_own_bot_msg(cfg, msg):
+                continue
             text = extract_text(msg).strip()
             if not text or text == "This message was recalled":
                 continue
