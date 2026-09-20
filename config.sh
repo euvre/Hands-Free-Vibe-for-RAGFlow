@@ -43,6 +43,21 @@ WORK_END="${WORK_END:-20:00}"
 LESSONS_PER_TASK="${LESSONS_PER_TASK:-4}"
 SUMMARIZE_SECONDS="${SUMMARIZE_SECONDS:-900}"
 
+# ---- bug 扫描线（scan）：中间区段文件审计 → 复现 → 群报告 → 修复交付 ----
+# 窗口：排除最新 SCAN_NEW_EXCLUDE_DAYS 天内改动的文件，排除最老
+# SCAN_OLD_PCT 分位之外的文件；中间区段按日历月分桶，UCB1 选批次。
+# 动态调整（SCAN_DYNAMIC=1）：连续 SCAN_ZERO_HIT_EXPAND 轮零命中 → 窗口扩张
+# 一档（new_days-7 下限 3、old_pct+5 上限 95）；候选池近枯竭时 select 内联
+# 扩张一次。hfv scan window --set 钉住后动态调整停用（--auto 恢复）。
+SCAN_NEW_EXCLUDE_DAYS="${SCAN_NEW_EXCLUDE_DAYS:-14}"
+SCAN_OLD_PCT="${SCAN_OLD_PCT:-85}"
+SCAN_BATCH_SIZE="${SCAN_BATCH_SIZE:-10}"
+SCAN_DYNAMIC="${SCAN_DYNAMIC:-1}"
+SCAN_ZERO_HIT_EXPAND="${SCAN_ZERO_HIT_EXPAND:-3}"
+# 源码扩展名白名单与路径排除（逗号分隔；前缀以 / 结尾，其余为子串）
+SCAN_EXTS="${SCAN_EXTS:-.py,.go,.ts,.tsx,.js,.jsx,.mjs,.cjs}"
+SCAN_EXCLUDE="${SCAN_EXCLUDE:-}"   # 空 = scan-select.py 内置默认
+
 # 显式传入的 RAGFLOW_MAIN 优先于站点钉值：run-container.sh 用
 # -e RAGFLOW_MAIN=<PR worktree> 把容器内的 ragflow-up.sh/build.sh 指向该 PR
 # 的 worktree；若 hfv.conf 无条件覆盖，容器里起的就是 ragflow4 的代码。

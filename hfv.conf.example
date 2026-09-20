@@ -51,3 +51,11 @@ BLAME_REVIEWER_EXCLUDE=            # 永不自动请求为 reviewer 的 login（
 # ---- 总结系统（leaf 归并 → playbook-effect 八宫引擎）----
 LESSONS_PER_TASK=4
 SUMMARIZE_SECONDS=900
+
+# ---- bug 扫描线（scan）：中间区段审计 → 复现 → 群报告 → 修复交付 ----
+SCAN_NEW_EXCLUDE_DAYS=14      # 最新 N 天内改动的文件不扫（作者还在盯着）
+SCAN_OLD_PCT=85               # 最老的分位之外不扫（长期稳定，bug 密度低）
+SCAN_BATCH_SIZE=10            # 每轮审计的文件数
+SCAN_DYNAMIC=1                # 动态调整：0 则钉死窗口（hfv scan window 可查看/覆盖）
+SCAN_ZERO_HIT_EXPAND=3        # 连续 N 轮零命中 → 窗口扩张一档（new-7/P+5）
+# SCAN_EXTS / SCAN_EXCLUDE  源码扩展名白名单 / 路径排除（逗号分隔，缺省用内置）

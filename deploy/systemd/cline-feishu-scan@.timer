@@ -1,0 +1,14 @@
+[Unit]
+Description=Run Cline repo bug-scan instance %i every 6 hours
+
+[Timer]
+# Scanning is a low-frequency line: one batch per instance every 6h. A round
+# costs a full LLM run (audit + reproduce + fix + verify); 6h keeps the daily
+# LLM budget for the issue/PR lines while walking the middle band steadily.
+# Manual triggers (hfv scan run) are always available.
+OnBootSec=7min
+OnUnitActiveSec=6h
+AccuracySec=120s
+
+[Install]
+WantedBy=timers.target

@@ -13,12 +13,14 @@ UNIT_REVIEW_SVC="cline-feishu-pr-review@1.service"
 UNIT_AUDIT_SVC="cline-feishu-pr-audit@1.service"
 UNIT_CI_SVC="cline-feishu-pr-ci@1.service"
 UNIT_SUMMARIZE_SVC="cline-feishu-summarize.service"
+UNIT_SCAN_SVC="cline-feishu-scan@1.service"
 UNIT_TIMER="cline-feishu-triage.timer"
 UNIT_PRFOLLOW_TIMER="cline-feishu-pr-follow@1.timer"
 UNIT_REBASE_TIMER="cline-feishu-pr-rebase@1.timer"
 UNIT_REVIEW_TIMER="cline-feishu-pr-review@1.timer"
 UNIT_AUDIT_TIMER="cline-feishu-pr-audit@1.timer"
 UNIT_CI_TIMER="cline-feishu-pr-ci@1.timer"
+UNIT_SCAN_TIMER="cline-feishu-scan@1.timer"
 LOG_DIR="$DIR/logs"
 
 usage() {
@@ -50,7 +52,7 @@ Run control:
   hfv stop                     stop the running task on ANY line (issue / feat / pr)
   hfv on | off                 enable / disable all six timers
   hfv scale <line> <n>         run <n> parallel instances of a task line
-                                 (issue|review|rebase|audit|ci|follow|feat|repr;
+                                 (issue|review|rebase|audit|ci|follow|feat|scan;
                                  0 = line off)
 
 Watching runs (one throwaway container per run, hfv-task-<ts>):
@@ -65,6 +67,18 @@ Issue line:
   hfv issue rec [reset]        one issue-recording pass now; 'reset' drops the
                                  cursor so the next pass re-scans the full window
   hfv issue window [days]      show / set the issue sliding window (1-30 days)
+
+Scan line (repo bug-scan: audit the middle-band files, reproduce, report to
+the Feishu group, fix and verify, deliver the PR):
+  hfv scan run [n]             trigger one scan round NOW (or only instance <n>)
+  hfv scan status              adaptive-window state: window, bucket hit rates,
+                                 totals, recent rounds
+  hfv scan window              show the current window
+  hfv scan window --set N P    pin it: exclude files touched in the last N days
+                                 and beyond the P-th age percentile (1-90, 50-100)
+  hfv scan window --auto       re-enable dynamic adjustment (zero-hit streaks
+                                 widen the band; hit history steers the batches)
+  hfv scan log | follow        the latest scan-line run log
 
 PR stages (manual single-shot; the pr timers also run them automatically —
 watch a running stage with: hfv follow <line>):
@@ -459,18 +473,20 @@ case "${1:-help}" in
     systemctl --user stop "$UNIT_SVC" "$UNIT_PRFOLLOW_SVC" "$UNIT_REBASE_SVC" "$UNIT_REVIEW_SVC" "$UNIT_AUDIT_SVC"
     feat_units="$(systemctl --user list-units 'cline-feishu-feat@*.service' --state=activating,running --no-legend 2>/dev/null | awk '{print $1}')"
     [[ -z "$feat_units" ]] || systemctl --user stop $feat_units
+    scan_units="$(systemctl --user list-units 'cline-feishu-scan@*.service' --state=activating,running --no-legend 2>/dev/null | awk '{print $1}')"
+    [[ -z "$scan_units" ]] || systemctl --user stop $scan_units
     # Task containers are dockerd children, NOT in any unit's cgroup — remove
     # them explicitly or they would keep running headless.
     tasks="$(docker ps -q --filter 'name=hfv-task-' 2>/dev/null)"
     [[ -z "$tasks" ]] || docker rm -f $tasks >/dev/null 2>&1
-    echo "stop signal sent (issue/feat/pr lines + any task containers; timers untouched)"
+    echo "stop signal sent (issue/feat/scan/pr lines + any task containers; timers untouched)"
     ;;
   on)
-    systemctl --user enable --now "$UNIT_TIMER" "$UNIT_PRFOLLOW_TIMER" "$UNIT_REBASE_TIMER" "$UNIT_REVIEW_TIMER" "$UNIT_AUDIT_TIMER" "$UNIT_CI_TIMER" && echo "timers enabled (triage + pr-follow + pr-review + pr-rebase + pr-audit + pr-ci)"
+    systemctl --user enable --now "$UNIT_TIMER" "$UNIT_PRFOLLOW_TIMER" "$UNIT_REBASE_TIMER" "$UNIT_REVIEW_TIMER" "$UNIT_AUDIT_TIMER" "$UNIT_CI_TIMER" "$UNIT_SCAN_TIMER" && echo "timers enabled (triage + pr-follow + pr-review + pr-rebase + pr-audit + pr-ci + scan)"
     ;;
   off)
-    systemctl --user stop "$UNIT_TIMER" "$UNIT_PRFOLLOW_TIMER" "$UNIT_REBASE_TIMER" "$UNIT_REVIEW_TIMER" "$UNIT_AUDIT_TIMER" "$UNIT_CI_TIMER"; systemctl --user disable "$UNIT_TIMER" "$UNIT_PRFOLLOW_TIMER" "$UNIT_REBASE_TIMER" "$UNIT_REVIEW_TIMER" "$UNIT_AUDIT_TIMER" "$UNIT_CI_TIMER"
-    echo "timers disabled (triage + pr-follow + pr-review + pr-rebase + pr-audit + pr-ci)"
+    systemctl --user stop "$UNIT_TIMER" "$UNIT_PRFOLLOW_TIMER" "$UNIT_REBASE_TIMER" "$UNIT_REVIEW_TIMER" "$UNIT_AUDIT_TIMER" "$UNIT_CI_TIMER" "$UNIT_SCAN_TIMER"; systemctl --user disable "$UNIT_TIMER" "$UNIT_PRFOLLOW_TIMER" "$UNIT_REBASE_TIMER" "$UNIT_REVIEW_TIMER" "$UNIT_AUDIT_TIMER" "$UNIT_CI_TIMER" "$UNIT_SCAN_TIMER"
+    echo "timers disabled (triage + pr-follow + pr-review + pr-rebase + pr-audit + pr-ci + scan)"
     ;;
   scale)
     # hfv scale <line> <n> — run <n> parallel instances of a task line
@@ -484,7 +500,8 @@ case "${1:-help}" in
       issue)  UNIT_PREFIX="cline-feishu-triage" ;;
       review|rebase|audit|ci|follow) UNIT_PREFIX="cline-feishu-pr-$LINE" ;;
       feat)   UNIT_PREFIX="cline-feishu-feat" ;;
-      *) echo "usage: hfv scale <issue|review|rebase|audit|ci|follow|feat> <n>" >&2; exit 1 ;;
+      scan)   UNIT_PREFIX="cline-feishu-scan" ;;
+      *) echo "usage: hfv scale <issue|review|rebase|audit|ci|follow|feat|scan> <n>" >&2; exit 1 ;;
     esac
     [[ "$N" =~ ^[0-9]+$ ]] || { echo "usage: hfv scale $LINE <n>" >&2; exit 1; }
     avail_mb="$(awk '/^MemAvailable:/ {print int($2/1024)}' /proc/meminfo)"
@@ -592,6 +609,14 @@ if os.path.exists(f):
 for i in range(1, n + 1):
     emit("feat", str(i), f"{DIR}/locks/run-feat-{i}.lock", f"{DIR}/state/.current-feat-{i}",
          latest(f"{LOG_DIR}/run-feat-*.log"))
+n = 1
+f = f"{DIR}/state/.scale-scan"
+if os.path.exists(f):
+    try: n = max(1, int(open(f).read().strip()))
+    except Exception: n = 1
+for i in range(1, n + 1):
+    emit("scan", str(i), f"{DIR}/locks/run-scan-{i}.lock", f"{DIR}/state/.current-scan-{i}",
+         latest(f"{LOG_DIR}/run-scan-*-i{i}.log"))
 
 print(fit("LINE", 8) + " " + fit("INST", 4) + " " + fit("STATE", 5) + " "
       + fit("TASK", 42) + " " + fit("AGE", 8) + "LOG")
@@ -615,7 +640,7 @@ PYPS
     [[ "$line" == "--clean" ]] && line=""
     [[ "$inst" == "--clean" ]] && inst=1
     if [[ -z "$line" ]]; then
-      for m in "$DIR"/state/.current-issue-* "$DIR"/state/.current-review-* "$DIR"/state/.current-rebase-* "$DIR"/state/.current-audit-* "$DIR"/state/.current-ci-* "$DIR"/state/.current-feat-* "$DIR"/state/.current-repr; do
+      for m in "$DIR"/state/.current-issue-* "$DIR"/state/.current-review-* "$DIR"/state/.current-rebase-* "$DIR"/state/.current-audit-* "$DIR"/state/.current-ci-* "$DIR"/state/.current-feat-* "$DIR"/state/.current-scan-* "$DIR"/state/.current-repr; do
         [[ -f "$m" ]] || continue
         base="$(basename "$m")"; line="${base#.current-}"; line="${line%-*}"; inst="${base##*-}"
         break
@@ -625,9 +650,10 @@ PYPS
     case "$line" in
       issue) f="$(ls -1t "$LOG_DIR"/run-[0-9]*-s"$inst".log 2>/dev/null | head -1)" ;;
       feat)  f="$(ls -1t "$LOG_DIR"/run-feat-*.log 2>/dev/null | head -1)" ;;
+      scan)  f="$(ls -1t "$LOG_DIR"/run-scan-*-i"$inst".log 2>/dev/null | head -1)" ;;
       review|rebase|audit|ci|follow|repr)
              f="$(ls -1t "$LOG_DIR"/run-pr-"$line"-*.log 2>/dev/null | head -1)" ;;
-      *) echo "usage: hfv $subcmd [issue|review|rebase|audit|ci|follow|feat|repr] [inst]" >&2; exit 1 ;;
+      *) echo "usage: hfv $subcmd [issue|review|rebase|audit|ci|follow|feat|scan|repr] [inst]" >&2; exit 1 ;;
     esac
     if [[ -z "$f" ]]; then
       echo "no run log for $line $inst yet"
@@ -709,6 +735,52 @@ PYPS
         ;;
       *)
         echo "usage: hfv issue log|follow|rec [reset]|window [days]" >&2; exit 1 ;;
+    esac
+    ;;
+  scan)
+    shift
+    SCAN_SEL="$DIR/scan/scan-select.py"
+    case "${1:-}" in
+      run)
+        # hfv scan run [n] — trigger one bug-scan round NOW on every enabled
+        # instance (or only instance <n>); an instance mid-run is skipped.
+        # --no-block: oneshot units — a plain start blocks until the whole
+        # run finishes (potentially hours).
+        only="${2:-}"
+        triggered=0
+        for l in "$HOME"/.config/systemd/user/timers.target.wants/cline-feishu-scan@[0-9]*.timer; do
+          [[ -e "$l" ]] || continue
+          inst="$(basename "$l" | sed -n 's/^cline-feishu-scan@\([0-9][0-9]*\)\.timer$/\1/p')"
+          [[ -n "$only" && "$inst" != "$only" ]] && continue
+          if ! flock -n "$DIR/locks/run-scan-$inst.lock" -c true 2>/dev/null; then
+            echo "instance $inst: a scan run is already active; skipped (run-scan-$inst.lock held)"
+            continue
+          fi
+          systemctl --user start --no-block "cline-feishu-scan@$inst.service"
+          echo "instance $inst: scan run triggered"
+          triggered=1
+        done
+        if [[ "$triggered" -eq 0 && -z "$only" ]]; then
+          echo "no scan instances enabled — scale up first: hfv scale scan <n>" >&2
+          exit 1
+        fi
+        echo "watch with: hfv ps  /  hfv follow scan"
+        ;;
+      status)
+        python3 "$SCAN_SEL" status
+        ;;
+      window)
+        shift
+        python3 "$SCAN_SEL" window "$@"
+        ;;
+      log)
+        exec bash "$DIR/hfv.sh" log scan "${2:-1}"
+        ;;
+      follow)
+        exec bash "$DIR/hfv.sh" follow scan "${2:-1}"
+        ;;
+      *)
+        echo "usage: hfv scan run [n] | status | window [--set <new_days> <old_pct> | --auto] | log [n] | follow [n]" >&2; exit 1 ;;
     esac
     ;;
   pr)

@@ -39,6 +39,14 @@ DEFAULTS = {
     "WORK_END": "20:00",
     "LESSONS_PER_TASK": "4",
     "SUMMARIZE_SECONDS": "900",
+    # bug 扫描线（scan/scan-select.py）：窗口边界 / 批次 / 动态调整
+    "SCAN_NEW_EXCLUDE_DAYS": "14",
+    "SCAN_OLD_PCT": "85",
+    "SCAN_BATCH_SIZE": "10",
+    "SCAN_DYNAMIC": "1",
+    "SCAN_ZERO_HIT_EXPAND": "3",
+    "SCAN_EXTS": "",
+    "SCAN_EXCLUDE": "",
 }
 
 

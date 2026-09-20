@@ -43,5 +43,11 @@ playbook-houses.md
 lines/gh-store/
 lines/gh-outbox/
 
+# ---- scan 线运行时状态（扫描器与提示词入库，状态不入库）----
+scan/state.json
+scan/current-*.json
+scan/deliver-*/
+scan/archive/
+
 # ---- IDE ----
 .idea/

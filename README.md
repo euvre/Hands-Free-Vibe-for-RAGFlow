@@ -23,6 +23,8 @@ hands-free-vibe (hfv) is an unattended maintenance robot for one open-source rep
 
 **Feature work from a spec.** A manual feat line: `hfv feat -f spec.md` implements a full feature from a spec document and reuses the same delivery machinery.
 
+**Proactive bug hunting.** The scan line (`hfv scan run`) audits the repo's "middle band" — files neither touched in the last few days nor beyond an old-age percentile — with an adaptive window: a UCB1 picker over calendar-month buckets steers batches toward the file cohorts that historically yielded reproduced bugs, and a zero-hit streak widens the band one step. A reproduced bug is reported to the Feishu group, then fixed, re-verified and delivered as a PR through the same machinery.
+
 **It learns.** Every task writes lessons into a rolling playbook. An effect engine ranks lessons by outcome rather than hit rate: how many iterations later tasks of the same kind saved after a lesson appeared. The useful ones float up, the stale ones sink and get purged.
 
 ## Why hfv

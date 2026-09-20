@@ -128,6 +128,7 @@ docker run \
   --add-host host.docker.internal:host-gateway \
   --shm-size 2g \
   -e HFV_SLOT="${HFV_SLOT:-}" \
+  -e HFV_SCAN_INST="${HFV_SCAN_INST:-}" \
   -e RAGFLOW_MAIN="$WT" \
   -e TZ="$(cat /etc/timezone 2>/dev/null || echo Asia/Shanghai)" \
   "${CRED_ARGS[@]}" "${ENV_ARGS[@]}" \

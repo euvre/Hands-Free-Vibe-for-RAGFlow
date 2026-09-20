@@ -1,0 +1,13 @@
+[Unit]
+Description=Cline bug-scan post-group backstop after a killed instance-%i run
+# Wired as OnFailure= on cline-feishu-scan@%i.service: when the task container
+# dies from a signal (SIGKILL/SIGTERM — ExecStartPost is skipped on ANY failed
+# ExecStart), this unit runs the scan post group so the round's outcome still
+# folds into the adaptive-window state, a staged report/PR is published, and
+# the deliver dir is archived. HFV_SCAN_INST must match the dead run's
+# instance.
+
+[Service]
+Type=oneshot
+Environment=HFV_SCAN_INST=%i
+ExecStart=%h/hands-free-vibe/lines/post-scan.sh

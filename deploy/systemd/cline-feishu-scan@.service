@@ -1,0 +1,20 @@
+[Unit]
+Description=Cline repo bug-scan task (one-shot task container, instance %i)
+# When the run is killed by a signal, ExecStartPost is skipped — this
+# backstop runs the scan post group instead (state fold, staged group
+# notifications, archive).
+OnFailure=cline-feishu-scan-onfail@%i.service
+
+[Service]
+Type=oneshot
+# No systemd start timeout: ExecStart legitimately runs for hours (LLM chain
+# guarded by its own internal timeout).
+TimeoutStartSec=0
+# Instance identity: framework scripts derive per-instance paths from this
+# variable (scan/current-N.json, scan/deliver-N, locks/run-scan-N.lock).
+Environment=HFV_SCAN_INST=%i
+# pre 组：遗留补偿 + 本轮批次选择。'-' 前缀：失败不阻塞主任务。
+ExecStartPre=-%h/hands-free-vibe/lines/pre-scan.sh
+ExecStart=%h/hands-free-vibe/lines/run-container.sh run-scan.sh
+# post 组：结果回写 + 群通知 + 交付 + 归档。'-' 前缀：失败不影响任务状态。
+ExecStartPost=-%h/hands-free-vibe/lines/post-scan.sh
