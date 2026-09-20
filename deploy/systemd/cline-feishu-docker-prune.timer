@@ -1,0 +1,13 @@
+[Unit]
+Description=Prune Docker build cache older than 72h, weekly
+
+[Timer]
+# Weekly is enough: build cache only grows when images are built (install.sh /
+# golden bootstrap / ad-hoc builds), and install.sh already prunes right after
+# its own build. This timer is the backstop for everything else.
+OnBootSec=15min
+OnUnitActiveSec=7d
+AccuracySec=1h
+
+[Install]
+WantedBy=timers.target

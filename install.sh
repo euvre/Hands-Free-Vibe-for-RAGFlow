@@ -106,6 +106,11 @@ elif [[ $CHECK_ONLY -eq 0 ]]; then
   say "  building hfv-task:base from docker/Dockerfile.task (a few minutes)..."
   if docker build -f "$DIR/docker/Dockerfile.task" -t hfv-task:base "$DIR/docker/"; then
     pass "hfv-task:base built"
+    # The build cache is the one unbounded docker growth on this host — prune
+    # layers older than 72h right after every build (fresh layers stay, so a
+    # re-run keeps its cache hits). The weekly docker-prune timer backstops
+    # ad-hoc builds.
+    bash "$DIR/framework/docker-prune.sh"
     note "golden bootstrap still needed: run one throwaway container, ragflow-up + log in once, then 'docker commit <ctr> hfv-task:latest' (see README)"
   else
     bad "hfv-task:base build failed"

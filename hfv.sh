@@ -21,6 +21,7 @@ UNIT_REVIEW_TIMER="cline-feishu-pr-review@1.timer"
 UNIT_AUDIT_TIMER="cline-feishu-pr-audit@1.timer"
 UNIT_CI_TIMER="cline-feishu-pr-ci@1.timer"
 UNIT_SCAN_TIMER="cline-feishu-scan@1.timer"
+UNIT_DOCKERPRUNE_TIMER="cline-feishu-docker-prune.timer"
 LOG_DIR="$DIR/logs"
 
 usage() {
@@ -482,11 +483,11 @@ case "${1:-help}" in
     echo "stop signal sent (issue/feat/scan/pr lines + any task containers; timers untouched)"
     ;;
   on)
-    systemctl --user enable --now "$UNIT_TIMER" "$UNIT_PRFOLLOW_TIMER" "$UNIT_REBASE_TIMER" "$UNIT_REVIEW_TIMER" "$UNIT_AUDIT_TIMER" "$UNIT_CI_TIMER" "$UNIT_SCAN_TIMER" && echo "timers enabled (triage + pr-follow + pr-review + pr-rebase + pr-audit + pr-ci + scan)"
+    systemctl --user enable --now "$UNIT_TIMER" "$UNIT_PRFOLLOW_TIMER" "$UNIT_REBASE_TIMER" "$UNIT_REVIEW_TIMER" "$UNIT_AUDIT_TIMER" "$UNIT_CI_TIMER" "$UNIT_SCAN_TIMER" "$UNIT_DOCKERPRUNE_TIMER" && echo "timers enabled (triage + pr-follow + pr-review + pr-rebase + pr-audit + pr-ci + scan + docker-prune)"
     ;;
   off)
-    systemctl --user stop "$UNIT_TIMER" "$UNIT_PRFOLLOW_TIMER" "$UNIT_REBASE_TIMER" "$UNIT_REVIEW_TIMER" "$UNIT_AUDIT_TIMER" "$UNIT_CI_TIMER" "$UNIT_SCAN_TIMER"; systemctl --user disable "$UNIT_TIMER" "$UNIT_PRFOLLOW_TIMER" "$UNIT_REBASE_TIMER" "$UNIT_REVIEW_TIMER" "$UNIT_AUDIT_TIMER" "$UNIT_CI_TIMER" "$UNIT_SCAN_TIMER"
-    echo "timers disabled (triage + pr-follow + pr-review + pr-rebase + pr-audit + pr-ci + scan)"
+    systemctl --user stop "$UNIT_TIMER" "$UNIT_PRFOLLOW_TIMER" "$UNIT_REBASE_TIMER" "$UNIT_REVIEW_TIMER" "$UNIT_AUDIT_TIMER" "$UNIT_CI_TIMER" "$UNIT_SCAN_TIMER" "$UNIT_DOCKERPRUNE_TIMER"; systemctl --user disable "$UNIT_TIMER" "$UNIT_PRFOLLOW_TIMER" "$UNIT_REBASE_TIMER" "$UNIT_REVIEW_TIMER" "$UNIT_AUDIT_TIMER" "$UNIT_CI_TIMER" "$UNIT_SCAN_TIMER" "$UNIT_DOCKERPRUNE_TIMER"
+    echo "timers disabled (triage + pr-follow + pr-review + pr-rebase + pr-audit + pr-ci + scan + docker-prune)"
     ;;
   scale)
     # hfv scale <line> <n> — run <n> parallel instances of a task line

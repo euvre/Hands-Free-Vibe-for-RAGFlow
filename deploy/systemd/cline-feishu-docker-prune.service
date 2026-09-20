@@ -1,0 +1,6 @@
+[Unit]
+Description=Docker build-cache housekeeping for hands-free-vibe (weekly)
+
+[Service]
+Type=oneshot
+ExecStart=%h/hands-free-vibe/framework/docker-prune.sh
