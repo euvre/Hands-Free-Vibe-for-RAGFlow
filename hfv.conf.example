@@ -27,6 +27,7 @@ MAIN_MAX_SECONDS=7200              # 单次尝试硬上限（2h）
 HFV_MIN_MEM_AVAILABLE_MB=18432     # 全局内存闸：MemAvailable 低于此值（MiB）时不起新容器
 HFV_CONTAINER_CPUS=10              # 单容器 CPU 硬限（核）——防 bring-up 打爆整机桌面假死
 HFV_CONTAINER_MEMORY=20g           # 单容器内存硬限（docker --memory）
+HFV_TOTAL_MEMORY_BUDGET_MB=49152     # hfv 全体容器内存总量预算（MiB，默认 48G）
 
 # ---- LLM 失败重试（quota / transient 共用）----
 QUOTA_RETRY_SECONDS=1800

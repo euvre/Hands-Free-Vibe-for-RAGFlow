@@ -44,6 +44,23 @@ if [[ -z "$(docker images -q "$GOLDEN")" ]]; then
   exit 1
 fi
 
+# Resource envelope (defined up here: the total-budget gate below needs the
+# per-container memory value). A task container bring-up (cold cgo+ORT link,
+# vite, ES/MySQL/Java, in-container chrome) can momentarily saturate every
+# core and livelock the desktop — a single container did hard-freeze this
+# 16-thread i5 twice. Caps bound ONE container; the gates below bound the
+# FLEET.
+CTR_CPUS="${HFV_CONTAINER_CPUS:-10}"
+CTR_MEM="${HFV_CONTAINER_MEMORY:-20g}"
+mem_to_mb() {  # 20g / 512m / bare-bytes → MiB
+  local v="${1,,}"
+  case "$v" in
+    *g) echo $(( ${v%g} * 1024 )) ;;
+    *m) echo $(( ${v%m} )) ;;
+    *)  echo $(( ${v:-0} / 1048576 )) ;;
+  esac
+}
+
 # --- global memory gate ------------------------------------------------------
 # Every task container wants a ~15-17G budget, and containers carry NO cgroup
 # memory limit: a post-boot stampede of lines (triage×2 + pr lines + scan, all
@@ -56,6 +73,36 @@ MEM_MIN_MB="${HFV_MIN_MEM_AVAILABLE_MB:-18432}"
 avail_mb="$(awk '/^MemAvailable:/ {print int($2/1024)}' /proc/meminfo)"
 if (( avail_mb < MEM_MIN_MB )); then
   log "memory gate: MemAvailable=${avail_mb}MiB < ${MEM_MIN_MB}MiB — refusing $SCRIPT (timer retries next tick)"
+  case "$SCRIPT" in
+    run-task.sh) touch "$HFV_DIR/logs/.rested${HFV_SUF}" ;;
+    run-scan.sh) touch "$HFV_DIR/logs/.rested-scan-${HFV_SCAN_INST:-1}" ;;
+    run-feat.sh) touch "$HFV_DIR/logs/.gated-feat-${HFV_FEAT_INST:-1}" ;;
+  esac
+  exit 0
+fi
+
+# --- total hfv-fleet memory budget -------------------------------------------
+# The MemAvailable gate watches the SYSTEM; this one watches the FLEET: the
+# sum of what hfv-task-* containers are actually using right now plus the new
+# container's envelope must stay under HFV_TOTAL_MEMORY_BUDGET_MB (default
+# 48G on this 62G host). docker --memory is a ceiling, not a reservation —
+# N containers at their ceilings can exceed physical RAM, so the budget is
+# enforced at admission time here instead.
+TOTAL_BUDGET_MB="${HFV_TOTAL_MEMORY_BUDGET_MB:-49152}"
+budget_mb="$(mem_to_mb "$CTR_MEM")"
+ctr_ids="$(docker ps -q --filter 'name=hfv-task-' 2>/dev/null)"
+used_mb=0
+if [[ -n "$ctr_ids" ]]; then
+  used_mb="$(timeout 10 docker stats --no-stream --no-trunc --format '{{.MemUsage}}' $ctr_ids 2>/dev/null \
+    | awk '{ v=$1; n=v+0;
+             if (v ~ /GiB$/) n*=1024;
+             else if (v ~ /KiB$/) n/=1024;
+             else if (v ~ /B$/ && v !~ /[MGK]iB$/) n/=1048576;
+             s+=n } END { print int(s) }' || echo 0)"
+fi
+used_mb="${used_mb:-0}"
+if (( used_mb + budget_mb > TOTAL_BUDGET_MB )); then
+  log "budget gate: hfv containers using ${used_mb}MiB + new ${budget_mb}MiB envelope > ${TOTAL_BUDGET_MB}MiB total budget — refusing $SCRIPT (timer retries next tick)"
   case "$SCRIPT" in
     run-task.sh) touch "$HFV_DIR/logs/.rested${HFV_SUF}" ;;
     run-scan.sh) touch "$HFV_DIR/logs/.rested-scan-${HFV_SCAN_INST:-1}" ;;
@@ -143,15 +190,6 @@ ENV_ARGS=()
 for v in PR_TMPL PR_TAG PR_NUM PR_BRANCH PR_URL PR_MID PR_TIMEOUT PR_PREFLIGHT PR_PRE_SECTION LLM_WAIT_FLAG HFV_UNLOCK_FLAG; do
   [[ -n "${!v:-}" ]] && ENV_ARGS+=(-e "$v=${!v}")
 done
-
-# Resource envelope: a task container bring-up (cold cgo+ORT link, vite,
-# ES/MySQL/Java, in-container chrome) can momentarily saturate every core and
-# livelock the desktop — a single container did hard-freeze this 16-thread
-# i5 twice. Cap the cores and memory so the desktop/background services always
-# keep their share; the memory gate above keeps concurrency bounded, these
-# caps bound ONE container.
-CTR_CPUS="${HFV_CONTAINER_CPUS:-10}"
-CTR_MEM="${HFV_CONTAINER_MEMORY:-20g}"
 
 docker run \
   --name "$CTR" \

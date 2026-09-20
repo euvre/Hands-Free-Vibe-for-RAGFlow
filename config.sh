@@ -76,6 +76,10 @@ HFV_MIN_MEM_AVAILABLE_MB="${HFV_MIN_MEM_AVAILABLE_MB:-18432}"
 # 留足余量；内存闸管并发数，这两个管单容器。
 HFV_CONTAINER_CPUS="${HFV_CONTAINER_CPUS:-10}"
 HFV_CONTAINER_MEMORY="${HFV_CONTAINER_MEMORY:-20g}"
+# hfv 全体任务容器的内存总量预算（MiB）：起新容器时检查"现有 hfv-task-*
+# 容器实际用量合计 + 新容器包络"是否超预算。docker --memory 是上限不是
+# 预留，N 个容器同时顶到上限可以超过物理内存，所以总量在准入侧闸住。
+HFV_TOTAL_MEMORY_BUDGET_MB="${HFV_TOTAL_MEMORY_BUDGET_MB:-49152}"
 
 # ---- 任务容器（随起随用）----
 # 每个任务从 golden 镜像 hfv-task:latest 起一个一次性容器
