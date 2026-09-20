@@ -44,6 +44,26 @@ if [[ -z "$(docker images -q "$GOLDEN")" ]]; then
   exit 1
 fi
 
+# --- global memory gate ------------------------------------------------------
+# Every task container wants a ~15-17G budget, and containers carry NO cgroup
+# memory limit: a post-boot stampede of lines (triage×2 + pr lines + scan, all
+# with OnBootSec timers) once ate the whole 62G and livelocked the desktop —
+# the host went through 5-15min hard-reboot cycles. Refuse the run when
+# MemAvailable is below one container's budget; the line's timer retries next
+# tick. The refusal stamps the line's rested/gated marker so its post group
+# skips silently instead of misreading the empty staging as a failed run.
+MEM_MIN_MB="${HFV_MIN_MEM_AVAILABLE_MB:-18432}"
+avail_mb="$(awk '/^MemAvailable:/ {print int($2/1024)}' /proc/meminfo)"
+if (( avail_mb < MEM_MIN_MB )); then
+  log "memory gate: MemAvailable=${avail_mb}MiB < ${MEM_MIN_MB}MiB — refusing $SCRIPT (timer retries next tick)"
+  case "$SCRIPT" in
+    run-task.sh) touch "$HFV_DIR/logs/.rested${HFV_SUF}" ;;
+    run-scan.sh) touch "$HFV_DIR/logs/.rested-scan-${HFV_SCAN_INST:-1}" ;;
+    run-feat.sh) touch "$HFV_DIR/logs/.gated-feat-${HFV_FEAT_INST:-1}" ;;
+  esac
+  exit 0
+fi
+
 # --- worktree ---------------------------------------------------------------
 if [[ -n "$WT_OVERRIDE" ]]; then
   WT="$WT_OVERRIDE"

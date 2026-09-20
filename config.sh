@@ -67,6 +67,11 @@ _RAGFLOW_MAIN_ENV="${RAGFLOW_MAIN:-}"
 [[ -n "$_RAGFLOW_MAIN_ENV" ]] && RAGFLOW_MAIN="$_RAGFLOW_MAIN_ENV"
 unset _RAGFLOW_MAIN_ENV
 
+# ---- 全局内存闸（run-container.sh：所有任务容器的唯一入口）----
+# 起容器前要求 MemAvailable ≥ 该值（MiB），不足则放弃本轮、timer 下个周期重试。
+# 单容器预算 ~15-17G；默认 18432（18G）在 62G 机器上把稳态并发压到 ~3 个容器。
+HFV_MIN_MEM_AVAILABLE_MB="${HFV_MIN_MEM_AVAILABLE_MB:-18432}"
+
 # ---- 任务容器（随起随用）----
 # 每个任务从 golden 镜像 hfv-task:latest 起一个一次性容器
 # （lines/run-container.sh）。golden 是冻结的并行基底：容器纯弃置，

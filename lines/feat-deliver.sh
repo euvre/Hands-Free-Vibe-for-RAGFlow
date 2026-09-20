@@ -30,6 +30,14 @@ log() { echo "[$(date +%Y%m%d-%H%M%S)] feat-deliver: $*" >> "$LOG_DIR/daemon.log
 dm() { python3 "$DM" dm-owner "$1" >>"$LOG_DIR/daemon.log" 2>&1 || true; }
 
 # --- staging gate ------------------------------------------------------------
+# memory-gated run (run-container.sh refused to start the container): nothing
+# was ever staged — skip silently, the "incomplete staging" DM below would be
+# a false alarm.
+if [[ -f "$LOG_DIR/.gated-feat-$FEAT_INST" ]]; then
+  rm -f "$LOG_DIR/.gated-feat-$FEAT_INST"
+  log "memory-gated run — nothing staged, skipping silently"
+  exit 0
+fi
 BRANCH_FILE="$FDIR/branch.txt"
 TITLE_FILE="$FDIR/pr-title.txt"
 BODY_FILE="$FDIR/pr-body.md"

@@ -22,6 +22,7 @@ DEFAULTS = {
     "PR_LABEL": "ci",
     "PR_REVIEWER": "",
     "MAIN_MAX_SECONDS": "7200",
+    "HFV_MIN_MEM_AVAILABLE_MB": "18432",  # 全局内存闸（run-container.sh）
     "QUOTA_RETRY_SECONDS": "1800",
     "QUOTA_MAX_WAIT_SECONDS": "21600",
     "TRANSIENT_RETRY_SECONDS": "120",

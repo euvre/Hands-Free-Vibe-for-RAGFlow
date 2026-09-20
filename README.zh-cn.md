@@ -71,7 +71,7 @@ github issues ─┘   screenshots/recordings transcribed to text
 
 systemd 用户级 timer 驱动各条线，线之间互不依赖。gh-recorder 每分钟跑一趟，是唯一访问 GitHub 的组件，一趟做两件事：排空 outbox 里的写操作；把所有在跟踪的 PR 刷成本地快照——meta、三通道对齐的完整评论清单、评审状态、CI 桶，评论里的图片附件同样下载转写。线脚本和容器只读快照，不碰 GitHub。
 
-日常回收：任务 worktree 池 48 小时清一次壳；闲置超过一小时的 per-PR 服务组自动停机，卷保留，下轮热启动。ClickHouse 收指标（cline.runs 系列表，90 天 TTL）和 PR 归宿（cline.prs：每个 issue 产出的 PR 是否被合并、GitHub 对话数量，按变迁逐行记录、无 TTL），`hfv ps` / `hfv log` / `hfv follow` 看实时任务视图。
+日常回收：任务 worktree 池 48 小时清一次壳；闲置超过一小时的 per-PR 服务组自动停机，卷保留，下轮热启动。全局内存闸（run-container.sh，所有任务容器的唯一入口）：MemAvailable 低于 HFV_MIN_MEM_AVAILABLE_MB（默认 18G）时拒绝起新容器，被拒的线打 rested 标记、下个 timer 周期自动重试。ClickHouse 收指标（cline.runs 系列表，90 天 TTL）和 PR 归宿（cline.prs：每个 issue 产出的 PR 是否被合并、GitHub 对话数量，按变迁逐行记录、无 TTL），`hfv ps` / `hfv log` / `hfv follow` 看实时任务视图。
 
 ## 安装
 

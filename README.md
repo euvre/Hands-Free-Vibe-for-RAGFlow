@@ -71,7 +71,7 @@ github issues ─┘   screenshots/recordings transcribed to text
 
 systemd user timers drive the lines, and the lines are independent of each other. gh-recorder runs once a minute and is the only component that talks to GitHub. Each pass does two things: drain the outbox (every pending write, executed with retries), and refresh local snapshots of every tracked PR into gh-store — meta, the full comment inventory reconciled across all three channels, review states, CI buckets, with image attachments in comments downloaded and transcribed too. Line scripts and containers read these snapshots and never touch GitHub.
 
-Housekeeping: the task worktree pool reaps husks after 48 hours; idle per-PR service groups are stopped after an hour with volumes kept, so the next round starts warm. ClickHouse collects metrics; `hfv ps` / `hfv log` / `hfv follow` give a live task view.
+Housekeeping: the task worktree pool reaps husks after 48 hours; idle per-PR service groups are stopped after an hour with volumes kept, so the next round starts warm. A global memory gate in run-container.sh refuses a new task container when MemAvailable drops below HFV_MIN_MEM_AVAILABLE_MB (default 18G) — a refused line stamps its rested marker and simply retries next tick. ClickHouse collects metrics; `hfv ps` / `hfv log` / `hfv follow` give a live task view.
 
 ## Install
 

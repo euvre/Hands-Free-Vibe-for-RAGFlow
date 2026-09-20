@@ -24,6 +24,7 @@ PR_REVIEWER=                       # 默认 = MERGE_OWNER_LOGIN
 
 # ---- 主任务运行 ----
 MAIN_MAX_SECONDS=7200              # 单次尝试硬上限（2h）
+HFV_MIN_MEM_AVAILABLE_MB=18432     # 全局内存闸：MemAvailable 低于此值（MiB）时不起新容器
 
 # ---- LLM 失败重试（quota / transient 共用）----
 QUOTA_RETRY_SECONDS=1800
