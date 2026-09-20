@@ -136,6 +136,11 @@ if python3 "$DIR/lines/gh-outbox.py" pr-create --branch "$BRANCH" --title "$TITL
      --body-file "$BODY_FILE" --mid "$MID" --task-id "$TASK_ID" \
      --reviewers "$REVIEWERS" >>"$LOG_DIR/daemon.log" 2>&1; then
   echo "[$(date +%Y%m%d-%H%M%S)] post-deliver: PR creation enqueued branch=$BRANCH (recorder replies the PR link)" >> "$LOG_DIR/daemon.log"
+  # Delivery is terminal LOCALLY, right now: flip the store record to done
+  # without waiting for the PR-link reply + next sync pass. The next tick's
+  # issue-select must never re-pick this record (tasks 346/347 → duplicate
+  # PRs #19853/#19857 happened inside that window).
+  python3 "$DIR/issues/issue-mark-done.py" "$MID" "$BRANCH" >>"$LOG_DIR/daemon.log" 2>&1 || true
 else
   # local enqueue failure — nothing will create the PR; report it now
   echo "[$(date +%Y%m%d-%H%M%S)] post-deliver: outbox enqueue FAILED for branch=$BRANCH" >> "$LOG_DIR/daemon.log"

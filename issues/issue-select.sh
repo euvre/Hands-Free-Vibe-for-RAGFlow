@@ -327,8 +327,24 @@ def main():
         save_store(records)
         print("issue-select: reclaimed %d stale in-flight marker(s)" % reclaimed)
 
+    # Belt-and-braces duplicate guard: a record carrying delivered_at was
+    # already shipped (post-deliver stamps it via issue-mark-done.py the
+    # moment the PR is enqueued). If its state flip was ever lost (crash
+    # mid-write, manual store edits, legacy records), state=="open" would
+    # make it pickable again — a duplicate delivery. Never select it; log so
+    # the stuck record is visible.
+    lost_flip = [r for r in records if r.get("state") == "open"
+                 and r.get("delivered_at")]
+    if lost_flip:
+        print("issue-select: %d open record(s) carry delivered_at — skipping "
+              "them and healing the lost state flip"
+              % len(lost_flip))
+        for r in lost_flip:
+            r["state"] = "done"
+        save_store(records)
     opens = sorted((r for r in records if r.get("state") == "open"
-                    and not r.get("in_flight_slot")),
+                    and not r.get("in_flight_slot")
+                    and not r.get("delivered_at")),
                    key=lambda r: (r.get("priority_penalty", 0),
                                   r.get("create_time", 0)), reverse=False)
     # Slot source affinity (ISSUE_SOURCES[_<slot>]): this slot only PICKS
