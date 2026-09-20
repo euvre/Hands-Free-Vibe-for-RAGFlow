@@ -144,10 +144,21 @@ for v in PR_TMPL PR_TAG PR_NUM PR_BRANCH PR_URL PR_MID PR_TIMEOUT PR_PREFLIGHT P
   [[ -n "${!v:-}" ]] && ENV_ARGS+=(-e "$v=${!v}")
 done
 
+# Resource envelope: a task container bring-up (cold cgo+ORT link, vite,
+# ES/MySQL/Java, in-container chrome) can momentarily saturate every core and
+# livelock the desktop — a single container did hard-freeze this 16-thread
+# i5 twice. Cap the cores and memory so the desktop/background services always
+# keep their share; the memory gate above keeps concurrency bounded, these
+# caps bound ONE container.
+CTR_CPUS="${HFV_CONTAINER_CPUS:-10}"
+CTR_MEM="${HFV_CONTAINER_MEMORY:-20g}"
+
 docker run \
   --name "$CTR" \
   --add-host host.docker.internal:host-gateway \
   --shm-size 2g \
+  --cpus "$CTR_CPUS" \
+  --memory "$CTR_MEM" --memory-swap "$CTR_MEM" \
   -e HFV_SLOT="${HFV_SLOT:-}" \
   -e HFV_SCAN_INST="${HFV_SCAN_INST:-}" \
   -e RAGFLOW_MAIN="$WT" \

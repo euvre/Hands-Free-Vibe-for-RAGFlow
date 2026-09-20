@@ -71,6 +71,11 @@ unset _RAGFLOW_MAIN_ENV
 # 起容器前要求 MemAvailable ≥ 该值（MiB），不足则放弃本轮、timer 下个周期重试。
 # 单容器预算 ~15-17G；默认 18432（18G）在 62G 机器上把稳态并发压到 ~3 个容器。
 HFV_MIN_MEM_AVAILABLE_MB="${HFV_MIN_MEM_AVAILABLE_MB:-18432}"
+# 单容器资源硬限：bring-up（冷 cgo 链接/vite/ES/容器内 chrome）能瞬时打满
+# 全核把桌面饿死（16 线程 i5 实测两次硬冻结）。10 核 + 20G 给桌面/后台
+# 留足余量；内存闸管并发数，这两个管单容器。
+HFV_CONTAINER_CPUS="${HFV_CONTAINER_CPUS:-10}"
+HFV_CONTAINER_MEMORY="${HFV_CONTAINER_MEMORY:-20g}"
 
 # ---- 任务容器（随起随用）----
 # 每个任务从 golden 镜像 hfv-task:latest 起一个一次性容器
