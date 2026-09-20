@@ -24,6 +24,23 @@ notify() {
   if [[ "$DRY" == 1 ]]; then log "DRY notify: ${1:0:120}…"; return 0; fi
   $NOTIFY "$1" >>"$LOG" 2>&1 || log "group notify FAILED (rc=$?): ${1:0:80}…"
 }
+# 发群报告并捕获 message_id（供后续进展回复进同一 thread）；打印 mid 到 stdout
+notify_report() {
+  if [[ "$DRY" == 1 ]]; then log "DRY notify(report): ${1:0:120}…"; return 0; fi
+  local mid
+  mid="$($NOTIFY "$1" 2>>"$LOG")" || { log "group report notify FAILED: ${1:0:80}…"; return 0; }
+  [[ "$mid" == om_* ]] && printf '%s' "$mid"
+}
+# 进展通知：有报告 mid 就回复进其 thread，否则退回独立新消息
+notify_followup() {
+  local text="$1" mid="${2:-}"
+  if [[ "$DRY" == 1 ]]; then log "DRY notify(followup, thread=${mid:-none}): ${text:0:120}…"; return 0; fi
+  if [[ "$mid" == om_* ]]; then
+    $NOTIFY --reply-to "$mid" "$text" >>"$LOG" 2>&1 && return 0
+    log "thread reply failed (mid=$mid), falling back to standalone message"
+  fi
+  $NOTIFY "$text" >>"$LOG" 2>&1 || log "group notify FAILED (rc=$?): ${text:0:80}…"
+}
 
 # run-scan rested this tick (no batch selected, no LLM run): consume the
 # marker and skip entirely.
@@ -43,7 +60,10 @@ OUTCOME="${OUTCOME:-unknown}"
 #    streak, auto expansion) — runs for every outcome including unknown.
 python3 "$DIR/scan/scan-select.py" report --slot "$SLOT" >>"$LOG" 2>&1 || true
 
-# 2. group report for a reproduced bug
+# 2. group report for a reproduced bug — the report opens the thread; every
+#    follow-up (PR link, failure notice) replies INTO it (issue-line style),
+#    never as a second standalone group message.
+REPORT_MID=""
 if [[ "$OUTCOME" == reported && -s "$DELIVER/report.md" ]]; then
   # backstop for the report.md backfill acceptance check (scan-task.md step 7):
   # placeholder wording left in the file means the agent shipped a mid-work
@@ -51,9 +71,9 @@ if [[ "$OUTCOME" == reported && -s "$DELIVER/report.md" ]]; then
   if grep -qE '待 step 7 回填|修复后更新|见下方|待补充|TBD' "$DELIVER/report.md"; then
     log "$SCAN_ID: WARN report.md still has placeholder sections (backfill missed) — sending anyway"
   fi
-  notify "【bug 扫描】$SCAN_ID 复现并确认了一个仓库缺陷：
+  REPORT_MID="$(notify_report "【bug 扫描】$SCAN_ID 复现并确认了一个仓库缺陷：
 
-$(cat "$DELIVER/report.md")"
+$(cat "$DELIVER/report.md")")"
 fi
 
 # 3. delivery (feat-line mode): the in-container agent already committed the
@@ -81,21 +101,21 @@ if [[ -s "$TITLE_FILE" && -s "$BODY_FILE" && -s "$MSG_FILE" && -n "$BRANCH" \
       PR_FILE="$DIR/tasks/$SCAN_ID/pr"
       for _ in $(seq 1 15); do [[ -s "$PR_FILE" ]] && break; sleep 10; done
       if [[ -s "$PR_FILE" ]]; then
-        notify "【bug 扫描】$SCAN_ID 修复已交付 PR：$(cat "$PR_FILE")（分支 $BRANCH）"
+        notify_followup "【bug 扫描】$SCAN_ID 修复已交付 PR：$(cat "$PR_FILE")（分支 $BRANCH）" "$REPORT_MID"
       else
-        notify "【bug 扫描】$SCAN_ID 分支 $BRANCH 已推送，PR 创建排队中（gh-recorder 稍后送达）。"
+        notify_followup "【bug 扫描】$SCAN_ID 分支 $BRANCH 已推送，PR 创建排队中（gh-recorder 稍后送达）。" "$REPORT_MID"
       fi
     else
       log "$SCAN_ID: outbox enqueue FAILED for $BRANCH"
-      notify "【bug 扫描】$SCAN_ID 交付失败：分支 $BRANCH 已推送但 PR 创建未能登记，需人工 gh pr create。"
+      notify_followup "【bug 扫描】$SCAN_ID 交付失败：分支 $BRANCH 已推送但 PR 创建未能登记，需人工 gh pr create。" "$REPORT_MID"
     fi
   else
     log "$SCAN_ID: push to $FORK_REMOTE/$BRANCH FAILED"
-    notify "【bug 扫描】$SCAN_ID 交付失败：push $BRANCH 被拒绝（非快进/网络），需人工处理。"
+    notify_followup "【bug 扫描】$SCAN_ID 交付失败：push $BRANCH 被拒绝（非快进/网络），需人工处理。" "$REPORT_MID"
   fi
 elif [[ "$OUTCOME" == reported ]]; then
   log "$SCAN_ID: reported but staging incomplete (branch='$BRANCH') — fix not published"
-  notify "【bug 扫描】$SCAN_ID 已复现确认缺陷，但修复交付不完整（分支/PR 文件缺失），详见日志。"
+  notify_followup "【bug 扫描】$SCAN_ID 已复现确认缺陷，但修复交付不完整（分支/PR 文件缺失），详见日志。" "$REPORT_MID"
 fi
 
 # 4. archive + clean
