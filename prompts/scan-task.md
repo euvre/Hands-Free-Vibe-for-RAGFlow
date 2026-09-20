@@ -52,7 +52,7 @@ Only fix after a successful reproduction. Open `http://127.0.0.1:9222` with the 
 - **Login (hard rule, no bypass)**: when not logged in you MUST log in via the chrome-devtools MCP on the login page with `1@1.com` / `1`. No bypasses: no DB password reset, no token-into-localStorage, no other accounts. The frontend RSA-encrypts the password before sending — NEVER conclude "wrong password" from a plaintext-API login failure.
 - **Cannot reproduce** → the candidate is demoted: go back to step 3 with the next candidate. If none remains, write `result.json` with `outcome="clean"` and a `notes` field listing what was ruled out, then end the task.
 - **Relaxation when external resources are unavailable (e.g. LLM key exhausted)**: if reproduction depends on real model answers and the LLM quota is gone, end-to-end reproduction is not mandatory — switch to code-level evidence (line-by-line comparison with the sibling implementation, event/data-flow analysis, unit tests). State the verification boundary explicitly in report.md and the PR body.
-- **Reproduced → immediately write the group report** `__DELIVER_DIR__/report.md` (Chinese): 现象（怎么触发、什么表现）/ 根因（文件:行 + 调用链）/ 复现步骤 / 影响面 / 涉及文件。This file is posted to the Feishu group by the post group — write it for humans who did not watch you work.
+- **Reproduced → immediately write the group report** `__DELIVER_DIR__/report.md` (Chinese): 现象（怎么触发、什么表现）/ 根因（文件:行 + 调用链）/ 复现步骤 / 影响面 / 涉及文件，然后以占位节 `## 修复内容` 与 `## 验证结果`（各留一行 "（待 step 7 回填）"）收尾。This file is posted to the Feishu group by the post group — write it for humans who did not watch you work.
 
 ## 6. Fix and verify (the issue line's second half, unchanged)
 
@@ -67,15 +67,16 @@ Only fix after a successful reproduction. Open `http://127.0.0.1:9222` with the 
 ## 7. Delivery preparation (feat-line mode: commit LOCALLY; never push)
 
 1. Create branch `fix/scan-<kebab-summary>` and commit your fix on it (English, repo `type(scope): subject` style). **Do NOT push** — the container has no git credentials by design; publishing is the host post group's job (push to fork → PR → group notification).
-2. Write into `__DELIVER_DIR__/`:
+2. **Backfill report.md (mandatory — the most-forgotten step; a past run shipped the pending placeholder to the group)**: the step-5 report was written mid-work with `## 修复内容` / `## 验证结果` left as placeholders. NOW replace those two sections with the actual fix (what changed, file:line) and the post-fix verification (the same reproduction path re-walked, before/after numbers, test results). **Acceptance check**: report.md must contain no placeholder wording — "（待 step 7 回填）", "修复后更新", "见下方", "待补充", "TBD". The post group sends exactly what is on disk; a placeholder section goes to the Feishu group verbatim.
+3. Write into `__DELIVER_DIR__/`:
    - `branch.txt` — the branch name you committed on
    - `commit-msg.txt` — the commit message (reference for the host side)
    - `pr-title.txt` — PR title (English)
    - `pr-body.md` — PR body (English; follow the Summary structure of `.github/pull_request_template.md`: background, root cause, fix, verification with the shots/ references)
-   - `report.md` — the Chinese group report from step 5, now completed with 修复内容 + 验证结果 (this completed version is what lands in the Feishu group)
+   - `report.md` — the backfilled Chinese group report (step 2's acceptance check applies)
    - `result.json` — the round outcome (schema in step 8)
    - `shots/` (optional) — the verification screenshots
-3. Once the files are complete you may safely end the task.
+4. Once the files are complete you may safely end the task.
 
 ## 8. result.json contract (mandatory on EVERY termination path)
 

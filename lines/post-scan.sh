@@ -45,6 +45,12 @@ python3 "$DIR/scan/scan-select.py" report --slot "$SLOT" >>"$LOG" 2>&1 || true
 
 # 2. group report for a reproduced bug
 if [[ "$OUTCOME" == reported && -s "$DELIVER/report.md" ]]; then
+  # backstop for the report.md backfill acceptance check (scan-task.md step 7):
+  # placeholder wording left in the file means the agent shipped a mid-work
+  # draft — still send (the reproduction body is valuable), but warn loudly.
+  if grep -qE '待 step 7 回填|修复后更新|见下方|待补充|TBD' "$DELIVER/report.md"; then
+    log "$SCAN_ID: WARN report.md still has placeholder sections (backfill missed) — sending anyway"
+  fi
   notify "【bug 扫描】$SCAN_ID 复现并确认了一个仓库缺陷：
 
 $(cat "$DELIVER/report.md")"
